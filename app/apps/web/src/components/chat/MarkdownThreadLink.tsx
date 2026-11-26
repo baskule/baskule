@@ -1,5 +1,5 @@
 import { UnresolvedChip } from "../contextChipParts";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useGT, useMessages } from "gt-react";
 import {
   formatHostedThreadLink,
@@ -18,6 +18,8 @@ import { ThreadContextChip } from "../ThreadContextChip";
 
 export function MarkdownThreadLink(props: {
   readonly environmentId: EnvironmentId;
+  /** The thread the link is written in; a linked environment's thread can open in its right panel. */
+  readonly threadRef?: ScopedThreadRef | undefined;
   readonly link: ThreadLink;
   readonly label: string | null;
 }) {
@@ -26,10 +28,10 @@ export function MarkdownThreadLink(props: {
   const candidates = threadLinkCandidates(props.link, props.environmentId);
   const writtenRef = candidates[0]!;
   const written = useThreadShell(writtenRef);
-  // A linked machine's threads are reachable only through its server, not from this client.
-  const reachable = useEnvironmentIdentities().some(
+  const saved = useEnvironmentIdentities().some(
     (environment) => environment.environmentId === writtenRef.environmentId,
   );
+  const reachable = saved;
   const lookup = useEnvironmentQuery(
     written === null && reachable
       ? orchestrationEnvironment.threadLinkMetadata({

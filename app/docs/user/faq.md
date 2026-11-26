@@ -15,7 +15,7 @@ We were inspired by the Codex desktop app, Conductor, Claude Desktop, and Cursor
 - Bring your own sub. Claude, Codex, and whatever else you already have installed.
 - Best in class remote. Run `t3 up` on any box and drive it from anywhere.
 - Best in class mobile app.
-- Truly 100% open source. If we go the wrong direction, fork it.
+- Truly 100% open source code (MIT). If we go the wrong direction, fork it under your own branding.
 
 Every harness feels nearly identical in here, so you can stop worrying about harnesses and focus on building :) [Install](./install.md)
 
@@ -65,7 +65,7 @@ No. T3 Code is a serious developer tool. Locally runnable models are not capable
 
 ## Does my code go to T3 servers?
 
-No. Your code and prompts go from your machine to your provider (Anthropic, OpenAI, etc.), not to us. With T3 Connect, traffic rides a Cloudflare tunnel (`cloudflared` on your machine). Our relay sets up the link. It does not proxy your HTTP or WebSocket sessions. T3 Code does send basic product usage events (provider, model, token totals, that kind of thing). No prompts, no file contents. That is the same on Tailscale, LAN, or T3 Connect. Set `T3CODE_TELEMETRY_ENABLED=false` if you want it off. [Product usage data](./telemetry.md)
+No. Your code and prompts go from your machine to your provider (Anthropic, OpenAI, etc.), not to us. With T3 Connect, traffic rides a Cloudflare tunnel (`cloudflared` on your machine). Our relay sets up the link. It does not proxy your HTTP or WebSocket sessions. T3 Code does send basic product usage events (provider, model, token totals, that kind of thing). No prompts, no file contents. That is the same on Tailscale, LAN, or T3 Connect. Set `T3CODE_TELEMETRY_ENABLED=false` or `DO_NOT_TRACK=1` if you want it off. [Product usage data](./telemetry.md)
 
 ## Worktrees are eating my disk. How do I clean them up?
 
@@ -73,7 +73,7 @@ Open **Settings → Worktrees → Cleanup** and turn on automatic worktree clean
 
 ## Is there voice input?
 
-Yes. On iPhone and Android, dictation uses on-device speech by default; you can opt in to a paired environment instead. Web and desktop require you to choose an environment first. The transcript goes into your draft for review. See [Voice input](./voice-input.md).
+Yes. On iPhone and Android, dictation uses on-device speech by default, with the option to use a paired environment. On macOS 26 or later, desktop users can choose Apple Speech directly under **On this Mac** or choose an environment. Web and other desktop users can enable dictation by choosing an environment. The transcript goes into your draft for review. See [Voice input](./voice-input.md).
 
 ## Does it work on Windows, Mac, and Linux?
 

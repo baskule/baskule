@@ -113,6 +113,7 @@ export const WINDOWS_POLICY_VALUES = {
   Connect: { type: "boolean", path: ["limits", "connect"] },
   WebhookTasks: { type: "boolean", path: ["limits", "webhookTasks"] },
   Telemetry: { type: "boolean", path: ["limits", "telemetry"] },
+  WorktreeLayoutCommands: { type: "boolean", path: ["limits", "worktreeLayoutCommands"] },
   BrowserCookieImport: { type: "boolean", path: ["limits", "browserCookieImport"] },
   ProviderInstances: { type: "json", path: ["limits", "providers", "instances"] },
   UpdatesMode: { type: "string", path: ["limits", "updates", "mode"] },

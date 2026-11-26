@@ -1,3 +1,4 @@
+import { withoutRemoteUrlCredentials } from "@t3tools/shared/cloneUrl";
 import type { RepositoryIdentity } from "@t3tools/contracts";
 import { normalizeGitRemoteUrl, canonicalRepositoryKey } from "@t3tools/shared/git";
 import * as Cache from "effect/Cache";
@@ -44,14 +45,32 @@ function isLocalRemoteUrl(url: string): boolean {
   return colonIndex === -1 || (slashIndex !== -1 && slashIndex < colonIndex);
 }
 
-function parseRemoteFetchUrls(stdout: string): Map<string, string> {
+// `git remote -v` applies url.*.insteadOf, which can point a GitHub remote at a proxy or mirror.
+// A configured URL that names a forge wins; a shorthand like `gh:` is known only once rewritten.
+function parseConfiguredRemoteUrls(config: string): Map<string, string> {
+  const urls = new Map<string, string>();
+  for (const line of config.split("\n")) {
+    const match = /^remote\.(\S+)\.url (.+)$/u.exec(line);
+    // Git fetches from the first of several configured URLs.
+    if (match?.[1] && match[2] && !urls.has(match[1])) urls.set(match[1], match[2]);
+  }
+  return urls;
+}
+
+function parseRemoteFetchUrls(
+  stdout: string,
+  configuredUrls: ReadonlyMap<string, string>,
+): Map<string, string> {
   const remotes = new Map<string, string>();
   for (const line of stdout.split(/\r?\n/)) {
     // Git uses a tab before the URL and one space before the direction; both can occur in URLs.
     // Partial clones append the promisor filter, e.g. `(fetch) [blob:none]`.
     const match = /^(\S+)\t(.+) \((fetch|push)\)(?:\s+\[[^\]]+\])?$/.exec(line);
     if (!match) continue;
-    const [, remoteName = "", remoteUrl = "", direction = ""] = match;
+    const [, remoteName = "", fetchUrl = "", direction = ""] = match;
+    const configuredUrl = configuredUrls.get(remoteName);
+    const remoteUrl =
+      configuredUrl !== undefined && !isLocalRemoteUrl(configuredUrl) ? configuredUrl : fetchUrl;
     if (
       direction !== "fetch" ||
       remoteName.length === 0 ||
@@ -60,7 +79,8 @@ function parseRemoteFetchUrls(stdout: string): Map<string, string> {
     ) {
       continue;
     }
-    remotes.set(remoteName, remoteUrl);
+    // The identity names the remote, not the login used to reach it.
+    remotes.set(remoteName, withoutRemoteUrlCredentials(remoteUrl));
   }
   return remotes;
 }
@@ -238,12 +258,19 @@ const resolveRepositoryIdentityFromCacheKey = Effect.fn(
         timeoutBehavior: "timedOutResult",
       })
       .pipe(Effect.option);
-  const remoteResult = yield* runGit(["remote", "-v"]);
+  const [remoteResult, configResult] = yield* Effect.all([
+    runGit(["remote", "-v"]),
+    runGit(["config", "--get-regexp", "^remote\\..*\\.url$"]),
+  ]);
   if (remoteResult._tag === "None" || remoteResult.value.code !== 0) {
     return null;
   }
 
-  const remotes = parseRemoteFetchUrls(remoteResult.value.stdout);
+  const configuredUrls =
+    configResult._tag === "Some" && configResult.value.code === 0
+      ? parseConfiguredRemoteUrls(configResult.value.stdout)
+      : new Map<string, string>();
+  const remotes = parseRemoteFetchUrls(remoteResult.value.stdout, configuredUrls);
   const remote = pickPrimaryRemote(remotes);
   return remote
     ? buildRepositoryIdentity({

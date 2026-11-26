@@ -1,3 +1,4 @@
+import * as EffectOutbox from "./EffectOutbox.ts";
 import * as ProviderInstallationGate from "../provider/ProviderInstallationGate.ts";
 import * as NetAddress from "effect/net/NetAddress";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -6,12 +7,14 @@ import { assert, it } from "@effect/vitest";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import {
   EnvironmentId,
+  MessageId,
   type ModelSelection,
   type OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ProviderCapabilities,
   type OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
+  type OrchestrationV2RestartCancelledBackgroundWork,
   type OrchestrationV2TurnItem,
   type Project,
   ProjectId,
@@ -601,6 +604,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
               resumeCount: current.resumeCount + 1,
             })).pipe(Effect.as(threadInput.providerThread)),
           startTurn: () => options.startTurn ?? Effect.void,
+          resumeTurn: () => options.startTurn ?? Effect.void,
           steerTurn: () => Effect.void,
           interruptTurn: () =>
             Ref.update(state, (current) => ({
@@ -639,7 +643,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
 
 function layerTest(input: {
   readonly state: Ref.Ref<TestProviderRuntimeState>;
-  readonly idleTimeoutMs: number;
+  readonly idleTimeoutMs?: number;
   readonly maxIdlePinMs?: number;
   readonly failEventStream?: boolean;
   readonly normalizeThreadLoadModelSelection?: (selection: ModelSelection) => ModelSelection;
@@ -754,11 +758,12 @@ function layerTest(input: {
   return Layer.mergeAll(
     layerTestStores,
     layerConfiguredEventSink,
+    EffectOutbox.layer.pipe(Layer.provide(layerTestDatabase)),
     IdAllocator.layer,
     layerConfiguredMcpRegistry,
     McpProviderSessions.layer,
     ProviderSessionManager.layerWithOptions({
-      idleTimeoutMs: input.idleTimeoutMs,
+      ...(input.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: input.idleTimeoutMs }),
       ...(input.maxIdlePinMs === undefined ? {} : { maxIdlePinMs: input.maxIdlePinMs }),
     }).pipe(
       Layer.provide(
@@ -2572,8 +2577,12 @@ const openSessionWithBackgroundCommand = (fixtureName: string) =>
         toolName: "mcp__t3-code__t3_worktree_handoff",
         input: {},
       }) satisfies OrchestrationV2TurnItem;
+    const cutOffNodeId = idAllocator.derive.nodeFromProviderItem({
+      driver: CODEX_DRIVER,
+      nativeItemId: "cut-off",
+    });
     const seededToolCalls = {
-      cutOff: toolCall("cut-off", providerThreads[0]!, "running", now),
+      cutOff: { ...toolCall("cut-off", providerThreads[0]!, "running", now), nodeId: cutOffNodeId },
       finished: toolCall("finished", providerThreads[0]!, "completed", now),
       otherSession: toolCall("other-session", providerThreads[1]!, "running", now),
       // Started by a replacement session after the release.
@@ -2599,7 +2608,41 @@ const openSessionWithBackgroundCommand = (fixtureName: string) =>
           ],
         });
       });
+    yield* eventSink.write({
+      events: [
+        {
+          id: yield* idAllocator.allocate.event({ threadId }),
+          type: "node.updated",
+          threadId,
+          nodeId: cutOffNodeId,
+          driver: CODEX_DRIVER,
+          occurredAt: now,
+          payload: {
+            id: cutOffNodeId,
+            threadId,
+            runId: null,
+            parentNodeId: null,
+            rootNodeId: cutOffNodeId,
+            kind: "tool_call",
+            status: "running",
+            countsForRun: true,
+            providerThreadId: providerThreads[0]!.id,
+            providerTurnId: null,
+            nativeItemRef: null,
+            runtimeRequestId: null,
+            checkpointScopeId: null,
+            startedAt: now,
+            completedAt: null,
+          },
+        },
+      ],
+    });
     yield* Effect.forEach(Object.values(seededToolCalls), writeToolCall);
+    const cutOffNodeStatus = Effect.gen(function* () {
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const projection = yield* projectionStore.getThreadProjection(threadId);
+      return projection.nodes.find((node) => node.id === cutOffNodeId)?.status;
+    });
     // A background native subagent that outlived its completed run; Claude records no provider thread on it.
     const nativeSubagentRunId = idAllocator.derive.run({ threadId, ordinal: 1 });
     const nativeSubagentId = idAllocator.derive.nodeFromProviderItem({
@@ -2683,6 +2726,7 @@ const openSessionWithBackgroundCommand = (fixtureName: string) =>
       toolCalls,
       toolCallStatus,
       nativeSubagentStatus,
+      cutOffNodeStatus,
     };
   });
 
@@ -2712,6 +2756,102 @@ it.effect.each(["a runtime whose tasks can outlive it", "server shutdown"] as co
             idleTimeoutMs: 60_000,
             ...(release === "server shutdown" ? {} : { backgroundTasksEndWithProcess: false }),
           }),
+        ),
+      );
+    }),
+);
+
+// regression: #40147 a provider process exit lost settled runs' background work with no note or wake
+it.effect.each(["stream failure", "detach"] as const)(
+  "ProviderSessionManagerV2 notes and wakes the run whose background work a %s cancels",
+  (release) =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const effect = Effect.gen(function* () {
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const eventSink = yield* EventSink.EventSinkV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+        const outbox = yield* EffectOutbox.EffectOutboxV2;
+        const { threadId, providerSessionId, providerThreads, seededToolCalls } =
+          yield* openSessionWithBackgroundCommand("provider-session-manager-exit-note");
+        const now = yield* DateTime.now;
+        const runId = idAllocator.derive.run({ threadId, ordinal: 1 });
+        const rootNodeId = idAllocator.derive.rootNode({ runId });
+        yield* eventSink.write({
+          events: [
+            {
+              id: yield* idAllocator.allocate.event({ threadId }),
+              type: "run.created",
+              threadId,
+              runId,
+              nodeId: rootNodeId,
+              driver: CODEX_DRIVER,
+              occurredAt: now,
+              payload: {
+                id: runId,
+                threadId,
+                ordinal: 1,
+                providerInstanceId: modelSelection.instanceId,
+                modelSelection,
+                providerThreadId: providerThreads[0]!.id,
+                userMessageId: MessageId.make("message:provider-session-manager-exit-note"),
+                rootNodeId,
+                activeAttemptId: null,
+                status: "completed",
+                requestedAt: now,
+                startedAt: now,
+                completedAt: now,
+                checkpointId: null,
+                contextHandoffId: null,
+              },
+            },
+          ],
+        });
+        const afterSequence = yield* eventSink.latestSequence({ threadId });
+        const expectedWork: ReadonlyArray<OrchestrationV2RestartCancelledBackgroundWork> = [
+          {
+            kind: "shell",
+            label: "python3 -m http.server (id dev-server)",
+            id: "dev-server",
+          },
+          {
+            kind: "task",
+            label: "mcp__t3-code__t3_worktree_handoff",
+            id: seededToolCalls.cutOff.id,
+          },
+        ];
+        const continuation = outbox.get(`effect:restart-continuation:${runId}`);
+        if (release === "detach") {
+          yield* manager.detach({ providerSessionId, threadId, detail: "Workspace changed." });
+          assert.isTrue(Option.isNone(yield* continuation));
+        } else {
+          yield* Queue.end((yield* Ref.get(state)).eventQueues.get(String(providerSessionId))!);
+          yield* eventSink.stream({ threadId, afterSequence }).pipe(
+            Stream.filter(
+              ({ event }) =>
+                event.type === "run.background-work-cancelled" &&
+                event.payload.restartCancelledBackgroundWork.length === expectedWork.length,
+            ),
+            Stream.take(1),
+            Stream.runDrain,
+          );
+          assert.deepStrictEqual(Option.getOrUndefined(yield* continuation)?.request, {
+            type: "provider-runtime.continue",
+            sourceRunId: runId,
+            cause: "provider_exit",
+          });
+        }
+        const { runs } = yield* projectionStore.getThreadRecords(threadId, ["runs"]);
+        assert.deepStrictEqual(
+          runs.find((run) => run.id === runId)?.restartCancelledBackgroundWork,
+          release === "detach" ? undefined : expectedWork,
+        );
+      });
+
+      yield* effect.pipe(
+        Effect.provide(
+          layerTest({ state, idleTimeoutMs: 60_000, capabilities: ExclusiveCapabilities }),
         ),
       );
     }),

@@ -20,6 +20,7 @@ const number = Schema.Number.check(Schema.isFinite());
 const dimensions = { width: number, height: number };
 const point = { x: number, y: number };
 const Input = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("selectMenu"), id: Schema.String, index: number }),
   Schema.Struct({ type: Schema.Literal("takeControl") }),
   Schema.Struct({ type: Schema.Literal("releaseControl") }),
   Schema.Struct({

@@ -17,9 +17,13 @@ import { ComposerSpeechRecordingPill } from "./ComposerSpeechButton";
 export function GlobalVoiceInputIndicator({
   environmentId,
   hidden = false,
-}: { environmentId?: EnvironmentId | undefined; hidden?: boolean }) {
+}: {
+  environmentId?: EnvironmentId | undefined;
+  hidden?: boolean;
+}) {
   const gt = useGT();
-  const { prepared, grantId, cloudProvider, cloudModel } = useVoiceTranscriptionDestination(environmentId);
+  const { prepared, grantId, cloudProvider, cloudModel } =
+    useVoiceTranscriptionDestination(environmentId);
   const session = useRetainedVoiceInputSession({ prepared, grantId, cloudProvider, cloudModel });
   const { state, target, recordingStartedAt } = useVoiceInputSessionSnapshot(session);
   const presented = useVoiceOwnerPresented(target?.ownerKey ?? null);

@@ -16,6 +16,7 @@ import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import { baskule076History, createBaskule076 } from "./fixtures/baskule076.ts";
+import { baskule102History, createBaskuleReleased } from "./fixtures/baskule102.ts";
 import { migrationManifest, runMigrations } from "./Migrations.ts";
 
 const decodeModelSelectionJson = Schema.decodeEffect(Schema.fromJsonString(ModelSelection));
@@ -361,14 +362,14 @@ describe.each([
   );
 });
 
-it.effect(
-  "reopens upgraded Node and hosted databases without repeating migrations or losing sessions",
-  () =>
+it.effect.each([96, 102] as const)(
+  "reopens Node and hosted databases upgraded from %s without repeating migrations or losing related data",
+  (throughId) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const filename = path.join(
-        yield* fs.makeTempDirectoryScoped({ prefix: "baskule-096-reopen-" }),
+        yield* fs.makeTempDirectoryScoped({ prefix: `baskule-${throughId}-reopen-` }),
         "state.sqlite",
       );
       const storage = makeFakeDoStorage();
@@ -376,20 +377,76 @@ it.effect(
         yield* Effect.scoped(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
-            yield* runMigrations({ toMigrationInclusive: 96 });
+            yield* createBaskuleReleased(throughId);
+            assert.deepStrictEqual(
+              yield* history,
+              baskule102History.filter(([id]) => id <= throughId),
+            );
+            assert.isFalse((yield* history).some(([id]) => [65, 70, 71, 72, 97].includes(id)));
             yield* sql`INSERT INTO auth_sessions (session_id, subject, scopes, method, issued_at, expires_at)
           VALUES ('reopen-session', 'reopen-member', '["orchestration:read"]', 'baskule', '2026-11-01', '2027-11-01')`;
+            yield* sql`INSERT INTO projection_projects
+              (project_id, title, workspace_root, default_model_selection_json, scripts_json, created_at, updated_at)
+              VALUES ('reopen-project', 'Keep project', '/workspace', '{}', '[]', '2026-11-01', '2026-11-01')`;
+            yield* sql`INSERT INTO orchestration_v2_projection_threads
+              (thread_id, project_id, title, default_provider, runtime_mode, interaction_mode, created_at, updated_at, payload_json)
+              VALUES ('reopen-thread', 'reopen-project', 'Keep authored chat', 'opencode', 'full-access', 'default', '2026-11-01', '2026-11-01',
+                '{"author":{"id":"reopen-member","name":"Member"},"title":"Keep authored chat"}')`;
+            yield* sql`INSERT INTO orchestration_v2_projection_messages
+              (message_id, thread_id, role, streaming, created_at, updated_at, payload_json)
+              VALUES ('reopen-message', 'reopen-thread', 'user', 0, '2026-11-01', '2026-11-01',
+                '{"text":"Keep content","author":{"id":"reopen-member","name":"Member"},"attachments":[{"id":"kept-file","name":"kept.txt"}]}')`;
+            yield* sql`INSERT INTO scheduled_tasks
+              (task_id, title, prompt, enabled, schedule_json, project_id, thread_id, workspace_strategy_json, model_selection_json,
+                runtime_mode, interaction_mode, author_json, created_by, creation_source, created_at, updated_at, last_run_status, run_count)
+              VALUES ('reopen-schedule', 'Keep schedule', 'Keep prompt', 0, '{}', 'reopen-project', 'reopen-thread', '{}', '{}',
+                'full-access', 'default', '{"id":"reopen-member","name":"Member"}', 'user', 'web', '2026-11-01', '2026-11-01', 'never', 0)`;
           }).pipe(Effect.provide(open())),
         );
         assert.deepStrictEqual(
           yield* Effect.scoped(runMigrations().pipe(Effect.provide(open()))),
-          migrationManifest.filter(([id]) => id > 96),
+          migrationManifest.filter(([id]) => id > throughId),
         );
         yield* Effect.scoped(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
             assert.deepStrictEqual(yield* runMigrations(), []);
             assert.deepStrictEqual(yield* history, migrationManifest);
+            assert.deepStrictEqual(
+              yield* sql`
+              SELECT t.thread_id, t.project_id, t.title, json_extract(t.payload_json, '$.author.id') AS author,
+                m.message_id, json_extract(m.payload_json, '$.text') AS text,
+                json_extract(m.payload_json, '$.attachments[0].id') AS attachment,
+                s.task_id, s.thread_id AS scheduled_thread
+              FROM orchestration_v2_projection_threads t
+              JOIN orchestration_v2_projection_messages m ON m.thread_id = t.thread_id
+              JOIN scheduled_tasks s ON s.thread_id = t.thread_id`,
+              [
+                {
+                  thread_id: "reopen-thread",
+                  project_id: "reopen-project",
+                  title: "Keep authored chat",
+                  author: "reopen-member",
+                  message_id: "reopen-message",
+                  text: "Keep content",
+                  attachment: "kept-file",
+                  task_id: "reopen-schedule",
+                  scheduled_thread: "reopen-thread",
+                },
+              ],
+            );
+            assert.deepStrictEqual(
+              yield* sql`SELECT tracked_folders_json FROM projection_projects WHERE project_id = 'reopen-project'`,
+              [{ tracked_folders_json: "[]" }],
+            );
+            assert.deepStrictEqual(
+              yield* sql`SELECT fork_run_ids_json FROM orchestration_v2_projection_threads WHERE thread_id = 'reopen-thread'`,
+              [{ fork_run_ids_json: null }],
+            );
+            assert.deepStrictEqual(
+              yield* sql`SELECT name FROM sqlite_master WHERE name IN ('issue_tracker_bindings', 'agent_feedback', 'workflow_runs', 'peer_environment_links')`,
+              [],
+            );
             assert.deepStrictEqual(
               yield* sql`SELECT session_id, subject, scopes, revoked_at, proof_key_thumbprint FROM auth_sessions`,
               [

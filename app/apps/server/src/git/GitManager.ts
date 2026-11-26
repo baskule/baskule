@@ -76,7 +76,9 @@ export interface GitLocalStatusOptions {
   readonly includeBranchChanges?: boolean;
 }
 
-export interface GitRemoteStatusOptions extends GitVcsDriver.GitRemoteStatusOptions {}
+export interface GitRemoteStatusOptions extends GitVcsDriver.GitRemoteStatusOptions {
+  readonly statusDetails?: GitVcsDriver.GitRemoteStatusDetails;
+}
 
 interface SourceControlTextGenerationSettings {
   readonly modelSelection: ModelSelection;
@@ -503,9 +505,11 @@ export const make = Effect.gen(function* () {
     cwd: string,
     options?: GitRemoteStatusOptions,
   ) {
-    const details = yield* gitCore
-      .statusDetailsRemote(cwd, options)
-      .pipe(Effect.catchIf(isNotGitRepositoryError, () => Effect.succeed(null)));
+    const details =
+      options?.statusDetails ??
+      (yield* gitCore
+        .statusDetailsRemote(cwd, options)
+        .pipe(Effect.catchIf(isNotGitRepositoryError, () => Effect.succeed(null))));
     if (details === null || !details.isRepo) {
       return null;
     }
@@ -605,7 +609,13 @@ export const make = Effect.gen(function* () {
           } as GitActionProgressEvent)
         : Effect.void;
 
-    let suggestion: CommitAndBranchSuggestion | null | undefined = preResolvedSuggestion;
+    const customCommit = parseCustomCommitMessage(commitMessage ?? "");
+    let suggestion: CommitAndBranchSuggestion | null | undefined =
+      preResolvedSuggestion ??
+      (customCommit && {
+        ...customCommit,
+        commitMessage: formatCommitMessage(customCommit.subject, customCommit.body),
+      });
     if (!suggestion) {
       const needsGeneration = !commitMessage?.trim();
       if (needsGeneration) {
@@ -677,11 +687,20 @@ export const make = Effect.gen(function* () {
             },
           }
         : null;
-    const { commitSha } = yield* gitCore.commit(cwd, suggestion.subject, suggestion.body, {
-      timeoutMs: COMMIT_TIMEOUT_MS,
-      stage: filePaths ? { filePaths } : {},
-      ...(commitProgress ? { progress: commitProgress } : {}),
-    });
+    const committed = yield* gitCore
+      .commit(cwd, suggestion.subject, suggestion.body, {
+        timeoutMs: COMMIT_TIMEOUT_MS,
+        stage: {
+          ...(filePaths ? { filePaths } : {}),
+          ...(!preResolvedSuggestion && customCommit ? { unverified: true } : {}),
+        },
+        ...(commitProgress ? { progress: commitProgress } : {}),
+      })
+      .pipe(Effect.catchTags({ GitNothingToCommitError: () => Effect.succeed(null) }));
+    if (!committed) {
+      return { status: "skipped_no_changes" as const };
+    }
+    const { commitSha } = committed;
     if (currentHookName !== null) {
       yield* emit({
         kind: "hook_finished",

@@ -12,6 +12,7 @@ import {
   type PreviewStreamDownload,
   type PreviewStreamFileChooser,
   type PreviewStreamInput,
+  type PreviewStreamSelectMenu,
 } from "@t3tools/client-runtime/preview/server-browser-stream";
 import type { DeviceHubAccess } from "@t3tools/client-runtime/device/hub-access";
 import {
@@ -29,10 +30,13 @@ import {
 } from "react";
 import { msg, useGT, useMessages } from "gt-react-native";
 import { Platform, Pressable, TextInput, View } from "react-native";
+import { LegendList } from "@legendapp/list/react-native";
 import { WebView } from "react-native-webview";
 import * as Clipboard from "expo-clipboard";
 
 import { AppText } from "../../components/ui/AppText";
+import { ListChoiceRow } from "../../components/ui/ListChoiceRow";
+import { Sheet } from "../../components/ui/Sheet";
 import { PdfPreview } from "../../components/PdfPreview";
 import { m } from "../../i18n/messages";
 import { downloadAndShareAttachment } from "../../lib/attachmentDownload";
@@ -345,6 +349,7 @@ function PreviewStreamDocumentView({
         ),
     );
   };
+  const [selectMenu, setSelectMenu] = useState<PreviewStreamSelectMenu | null>(null);
   const command = (input: PreviewStreamInput) => {
     nativeBridge.current?.command(input);
   };
@@ -372,6 +377,7 @@ function PreviewStreamDocumentView({
     onStreamingChange?.(false);
     setControl(null);
     setFileChooser(null);
+    setSelectMenu(null);
     onControl?.(null);
     setError(message);
     setStatus("error");
@@ -381,6 +387,7 @@ function PreviewStreamDocumentView({
     switch (message.type) {
       case "control": {
         setControl(message);
+        if (message.controller !== "you") setSelectMenu(null);
         const previousDialog = dialogRef.current;
         dialogRef.current = message.dialog;
         setPromptText((draft) => previewPromptText(previousDialog, message.dialog, draft));
@@ -409,6 +416,9 @@ function PreviewStreamDocumentView({
         return;
       case "download":
         offerDownload(message, transfer, transferController.current.signal);
+        return;
+      case "selectMenu":
+        setSelectMenu(message.menu);
         return;
       case "fileChooser":
         setFileChooser(message.chooser);
@@ -461,6 +471,7 @@ function PreviewStreamDocumentView({
         onHostSetup: (setup) => observeNativeMessage({ type: "hostSetup", ...setup }),
         onClipboard: (text) => observeNativeMessage({ type: "clipboard", text }),
         onDownload: (download) => observeNativeMessage({ type: "download", ...download }),
+        onSelectMenu: (menu) => observeNativeMessage({ type: "selectMenu", menu }),
         onFileChooser: (chooser) => observeNativeMessage({ type: "fileChooser", chooser }),
         onFailure: (detail) => observeNativeMessage({ type: "status", status: "error", detail }),
       },
@@ -595,6 +606,40 @@ function PreviewStreamDocumentView({
             />
           </View>
         </View>
+      ) : null}
+      {!compact && selectMenu && control?.controller === "you" ? (
+        <Sheet
+          key={selectMenu.id}
+          title={gt("Choose an option")}
+          onClose={() =>
+            setSelectMenu((current) => (current?.id === selectMenu.id ? null : current))
+          }
+        >
+          {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- Sheet content; the sheet keeps its own header handling. */}
+          <LegendList
+            data={selectMenu.options}
+            // The page answers by option index.
+            keyExtractor={(_, index) => String(index)}
+            extraData={selectMenu}
+            estimatedItemSize={48}
+            className="flex-1"
+            nestedScrollEnabled
+            contentInsetAdjustmentBehavior="automatic"
+            contentContainerStyle={{ padding: 16 }}
+            renderItem={({ item, index }) => (
+              <ListChoiceRow
+                label={item.label}
+                selected={index === selectMenu.selectedIndex}
+                separated={index > 0}
+                disabled={item.disabled}
+                onPress={() => {
+                  setSelectMenu(null);
+                  command({ type: "selectMenu", id: selectMenu.id, index });
+                }}
+              />
+            )}
+          />
+        </Sheet>
       ) : null}
       {!compact && control?.dialog ? (
         <View className="absolute inset-x-3 top-16 gap-3 rounded-xl border border-secondary-border bg-secondary p-4">

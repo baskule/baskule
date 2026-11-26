@@ -6,6 +6,9 @@ import {
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
+  ProviderDriverKind,
+  type ServerProvider,
+  type UnifiedSettings,
   ScheduledTaskId,
   ThreadId,
   type ScheduledTask,
@@ -14,6 +17,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
+import { createModelCapabilities } from "@t3tools/shared/model";
 import { act, render } from "../../../test/render";
 import { ScheduledTasksSettings } from "./ScheduledTasksSettings";
 
@@ -58,9 +62,13 @@ const threadFamilyRead = {
 const state = vi.hoisted(() => ({
   connected: true,
   tasksLoaded: true,
-  secondary: false,
   userId: "alice",
   remove: vi.fn(),
+  tasks: [] as ScheduledTask[],
+  secondary: false,
+  providers: null as unknown as Atom.Writable<ReadonlyArray<ServerProvider>>,
+  settings: null as unknown as UnifiedSettings,
+  upsert: vi.fn(),
 }));
 vi.mock(import("../../baskule/session"), async (original) => ({
   ...(await original()),
@@ -92,7 +100,11 @@ function setup() {
   state.connected = true;
   state.tasksLoaded = true;
   state.remove.mockReset().mockReturnValue(Effect.succeed({ id: task.id }));
+  state.tasks = [task];
   state.secondary = false;
+  state.providers = Atom.make<ReadonlyArray<ServerProvider>>([]);
+  state.settings = DEFAULT_UNIFIED_SETTINGS;
+  state.upsert.mockReset().mockReturnValue(Effect.succeed({ id: task.id }));
   permissions.clear();
   permissions.set(environmentId, Atom.make(true));
   permissions.set(secondaryId, Atom.make(true));
@@ -151,8 +163,10 @@ vi.mock(import("../../state/server"), async (original) => {
         ...actual.serverEnvironment.deleteScheduledTask,
         run: state.remove,
       },
+      providersValueAtom: (() => state.providers) as never,
       upsertScheduledTask: {
         ...actual.serverEnvironment.upsertScheduledTask,
+        run: state.upsert,
         permissionAtom: (id: string | null) => permissions.get(id ?? "")!,
       },
     },
@@ -172,7 +186,7 @@ vi.mock(import("../../state/query"), async (original) => ({
     data:
       request === null || request === threadFamilyRead
         ? request
-        : { tasks: state.tasksLoaded ? [task] : [] },
+        : { tasks: state.tasksLoaded ? state.tasks : [] },
     error: null,
     isPending: false,
     refresh: vi.fn(),
@@ -189,8 +203,56 @@ vi.mock(import("../../state/entities"), async (original) => ({
 }));
 vi.mock(import("../../hooks/useSettings"), async (original) => ({
   ...(await original()),
-  useEnvironmentSettings: (() => DEFAULT_UNIFIED_SETTINGS) as never,
+  useEnvironmentSettings: (() => state.settings) as never,
 }));
+
+function setupEffortTask() {
+  setup();
+  const selection = {
+    ...task.modelSelection,
+    options: [{ id: "reasoningEffort", value: "high" }],
+  };
+  state.tasks = [{ ...task, threadId: null, modelSelection: selection }];
+  state.settings = { ...DEFAULT_UNIFIED_SETTINGS, defaultModelSelection: selection };
+  state.providers = Atom.make<ReadonlyArray<ServerProvider>>([
+    {
+      instanceId: selection.instanceId,
+      driver: ProviderDriverKind.make("codex"),
+      enabled: true,
+      installed: true,
+      version: null,
+      status: "ready",
+      auth: { status: "authenticated" },
+      checkedAt: "2026-11-03T00:00:00.000Z",
+      models: [
+        {
+          slug: selection.model,
+          name: "GPT-5.4",
+          isCustom: false,
+          capabilities: createModelCapabilities({
+            optionDescriptors: [
+              {
+                id: "reasoningEffort",
+                label: "Reasoning effort",
+                type: "select",
+                options: [
+                  { id: "low", label: "Low", isDefault: true },
+                  { id: "high", label: "High" },
+                ],
+                currentValue: "low",
+              },
+            ],
+          }),
+        },
+        { slug: "plain", name: "Plain model", isCustom: false, capabilities: null },
+        { slug: "gpt-5.5", name: "Bound model", isCustom: false, capabilities: null },
+      ],
+      skills: [],
+      slashCommands: [],
+    },
+  ]);
+  return selection;
+}
 
 describe("ScheduledTasksSettings", () => {
   it("hides task editing and run controls from a different author", async () => {
@@ -261,15 +323,17 @@ describe("ScheduledTasksSettings", () => {
   });
 
   it("offers no model choice for a task bound to a thread, whose runs use the thread's model", async () => {
-    setup();
+    setupEffortTask();
+    state.tasks = [{ ...state.tasks[0]!, threadId: task.threadId }];
     await using _screen = await render(<ScheduledTasksSettings taskId={task.id} />);
     await expect.element(page.getByRole("dialog").getByText("Fix login bug")).toBeVisible();
     const enabledPicker = document.querySelector(
       '[role="dialog"] [data-chat-provider-model-picker]:not(:disabled)',
     );
     expect(enabledPicker).toBeNull();
+    expect(page.getByRole("button", { name: "High", exact: true }).query()).toBeNull();
     await expect
-      .element(page.getByRole("dialog").getByRole("button", { name: "gpt-5.5", exact: true }))
+      .element(page.getByRole("dialog").getByRole("button", { name: "Bound model", exact: true }))
       .toBeDisabled();
   });
 
@@ -286,6 +350,20 @@ describe("ScheduledTasksSettings", () => {
     await screen.rerender(<ScheduledTasksSettings taskId={task.id} />);
 
     await expect.element(dialog.getByRole("heading", { name: "New task" })).toBeInTheDocument();
+    await expect.element(name).toHaveValue("My draft");
+  });
+
+  it("keeps a new task's draft when the user clicks outside the editor", async () => {
+    setup();
+    await using _screen = await render(<ScheduledTasksSettings />);
+    await userEvent.click(page.getByRole("button", { name: "New task" }));
+    const dialog = page.getByRole("dialog");
+    const name = dialog.getByRole("textbox", { name: "Name" });
+    await userEvent.fill(name, "My draft");
+
+    await userEvent.click(document.body, { position: { x: 1, y: 1 } });
+
+    await expect.element(dialog).toHaveAttribute("data-open");
     await expect.element(name).toHaveValue("My draft");
   });
 });

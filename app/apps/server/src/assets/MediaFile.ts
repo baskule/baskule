@@ -92,6 +92,18 @@ export const openMediaFile = Effect.fn("openMediaFile")(function* (
   );
 });
 
+/** Identity, size and nanosecond times, so it moves whenever the file is edited or replaced. */
+export const mediaFileRevision = (info: HostBigIntStats) =>
+  `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
+
+/** Follows links, as serving the path does. Null when nothing can be read there. */
+export const readFileRevision = Effect.fn("readFileRevision")(function* (filePath: string) {
+  const fs = yield* HostFileSystem;
+  return yield* Effect.promise(() =>
+    fs.stat(filePath, { bigint: true }).then(mediaFileRevision, () => null),
+  );
+});
+
 export const readMediaFileHeader = (filePath: string, file: OpenMediaFile, byteCount: number) =>
   Effect.tryPromise({
     try: async () => {

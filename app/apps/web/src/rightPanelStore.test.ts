@@ -1,5 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { type EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { useClosedViewStore } from "./closedViewStore";
@@ -356,6 +356,43 @@ describe("rightPanelStore", () => {
       },
     });
     expect(selectThreadRightPanelState(migrated.byThreadKey, refA).maximized).toBe(true);
+  });
+
+  it("opens a side chat once per thread, and never the panel's own thread", () => {
+    const store = useRightPanelStore.getState();
+    const child = ThreadId.make("child");
+    store.openSideChat(refA, child);
+    store.open(refA, "diff");
+    store.openSideChat(refA, child);
+    store.openSideChat(refA, refA.threadId);
+    const panel = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(panel.surfaces.map((surface) => surface.id)).toEqual(["side-chat:child", "diff"]);
+    expect(panel.activeSurfaceId).toBe("side-chat:child");
+  });
+
+  it("keeps saved side chat tabs and drops malformed surfaces", () => {
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "side-chat:side",
+          surfaces: [
+            { id: "diff", kind: "diff" },
+            { id: "side-chat:side", kind: "side-chat", threadId: "side" },
+            { id: "side-chat:gone", kind: "side-chat" },
+            { id: "thread:stale", kind: "side-chat", threadId: "sub" },
+          ],
+        },
+      },
+    });
+    expect(selectThreadRightPanelState(migrated.byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "side-chat:side",
+      surfaces: [
+        { id: "diff", kind: "diff" },
+        { id: "side-chat:side", kind: "side-chat", threadId: "side" },
+      ],
+    });
   });
 
   it("drops the legacy singleton terminal surface during migration", () => {

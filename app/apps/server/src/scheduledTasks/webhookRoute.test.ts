@@ -31,6 +31,7 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as RelayDeliveryProof from "./RelayDeliveryProof.ts";
 import { WEBHOOK_MAX_BODY_BYTES } from "./webhookRoute.ts";
 import * as WebhookRoute from "./webhookRoute.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 
 class WebhookTestApi extends HttpApi.make("environment").add(EnvironmentHttpApi.groups.webhooks) {}
 
@@ -81,6 +82,7 @@ const handlerFor = (
       Layer.provide(WebhookRoute.layer),
       Layer.provide(RelayDeliveryProof.layer),
       Layer.provide(Layer.mock(ScheduledTaskService)({ triggerWebhook: trigger })),
+      Layer.provide(ManagedPolicy.layerTest()),
       Layer.provide(
         Layer.mock(ServerSecretStore.ServerSecretStore)({
           get: (name) =>
@@ -187,6 +189,30 @@ describe("webhook route", () => {
       expect(received[0]?.relayDeliveryId).toBeUndefined();
     }),
   );
+
+  it("keeps a browser's session cookie out of the request a task reads", async () => {
+    const received: Array<WebhookTriggerRequest> = [];
+    const { handler, dispose } = handlerFor((request) => {
+      received.push(request);
+      return Effect.succeed({
+        _tag: "accepted",
+        deliveryId: ScheduledTaskWebhookDeliveryId.make("delivery:1"),
+        outcome: "accepted",
+      });
+    });
+    try {
+      const response = await handler(
+        new Request("http://env.local/api/hooks/id/tok", {
+          headers: { Cookie: "t3_session=session-secret", "x-github-event": "push" },
+        }),
+      );
+      expect(response.status).toBe(202);
+      expect(received[0]?.headers).not.toHaveProperty("cookie");
+      expect(received[0]?.headers["x-github-event"]).toBe("push");
+    } finally {
+      await dispose();
+    }
+  });
 
   it("maps service outcomes to status codes and names each outcome for the relay", async () => {
     const deliveryId = ScheduledTaskWebhookDeliveryId.make("delivery:1");

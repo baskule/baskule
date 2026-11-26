@@ -30,6 +30,13 @@ export function UsageLimitRecoveryCard({
     resetAt !== null &&
     Date.parse(resetAt) > Date.parse(thread.latestRun?.completedAt ?? thread.updatedAt);
   const resetPassed = useDeadlinePassed(resetAt === null ? null : Date.parse(resetAt));
+  const displayPassed = useDeadlinePassed(
+    thread.snoozedUntil
+      ? Date.parse(thread.snoozedUntil)
+      : resetAt === null
+        ? null
+        : Date.parse(resetAt),
+  );
   const runId = thread.latestRun?.runId;
   const recovery = thread.limitRecovery;
   const scheduled =
@@ -48,8 +55,10 @@ export function UsageLimitRecoveryCard({
     !runId
   )
     return null;
-  const resetDate = displayAt
-    ? new Date(displayAt).toLocaleString(undefined, {
+  const resumesUpcoming = canSchedule && scheduled && !displayPassed;
+  const shownAt = resumesUpcoming ? displayAt : resetAt;
+  const resetDate = shownAt
+    ? new Date(shownAt).toLocaleString(undefined, {
         month: "short",
         day: "numeric",
         hour: "numeric",
@@ -88,7 +97,6 @@ export function UsageLimitRecoveryCard({
       setError(errorDisplayMessage(cause, m) ?? gt("Could not change limit recovery."));
     }
   }
-  const resumes = canSchedule && scheduled;
   return (
     <View className="mx-3 mb-2 gap-2 rounded-xl border border-warning-foreground/25 bg-screen p-3">
       <View className="min-w-0 flex-1 gap-1">
@@ -97,14 +105,22 @@ export function UsageLimitRecoveryCard({
             ? gt(
                 "Usage limit reached. The provider did not report a reset time. Retry manually when your limit is available.",
               )
-            : resumes
+            : resumesUpcoming
               ? gt("Usage limit reached. Resumes {date}.", { date: resetDate })
-              : gt("Usage limit reached. Resets {date}.", { date: resetDate })}
+              : resetPassed
+                ? gt("Usage limit reached. Reset {date}.", { date: resetDate })
+                : gt("Usage limit reached. Resets {date}.", { date: resetDate })}
         </Text>
         {canSchedule ? (
           <View className="-mb-3 -mt-2 flex-row flex-wrap gap-x-4">
             <RecoveryAction
-              label={scheduled ? gt("Cancel auto-resume") : gt("Resume at reset")}
+              label={
+                scheduled
+                  ? gt("Cancel auto-resume")
+                  : resetPassed
+                    ? gt("Resume now")
+                    : gt("Resume at reset")
+              }
               disabled={pending}
               onPress={() => void toggle("resume")}
             />

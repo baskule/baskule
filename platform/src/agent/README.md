@@ -49,7 +49,7 @@ SpaceCell calls `stop()` (interrupt active sessions) and `dispose()` directly.
 | `remote-spawner.js` | Effect `ChildProcessSpawner` over computerd `POST /v1/spaces/:id/exec` (NDJSON frames) and `/kill` |
 | `computerd.ts` | computerd client (exec, kill, status) |
 | `space-bridge.ts` | OpenCode's route back to T3's MCP server (agent and preview tools) in the same SpaceCell |
-| `t3-mcp.ts` | cached static tool list in front of T3's MCP server, so a chat's first step needs no round trip |
+| `t3-mcp.ts` | static tool list cached by T3 bundle hash, avoiding an MCP round trip on a cache hit |
 | `lazy-mcp.ts` | in-isolate MCP registry (`baskule-mcp.internal`) for `t3-mcp.ts` proxies and the sample app |
 | `sample-app.ts` | the bundled interactive MCP app (`decision`) |
 | `plugin-mcp.ts`, `turn-author.ts` | remote plugin tools through an in-isolate proxy; ControlCell policy and the author's credential per call; persisted turn identity |

@@ -54,6 +54,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts";
 import * as ModelManifest from "../provider/ModelManifest.ts";
@@ -75,6 +76,7 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
+import { layerNoTaskFolders } from "./ProviderTurnStartService.testkit.ts";
 import * as RuntimeLayer from "./runtimeLayer.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
@@ -115,10 +117,16 @@ const layerVcsDriverRegistryTest = VcsDriverRegistry.layer.pipe(
 const layerCheckpointStoreTest = CheckpointStore.layer.pipe(
   Layer.provide(layerVcsDriverRegistryTest),
 );
-const layerGitWorkflowTest = Layer.mock(GitWorkflow.GitWorkflowService)({
-  pruneWorktrees: () => Effect.void,
-  createWorktree: () => Effect.succeed({} as never),
-});
+const layerGitWorkflowTest = Layer.mergeAll(
+  Layer.mock(GitWorkflow.GitWorkflowService)({
+    pruneWorktrees: () => Effect.void,
+    createWorktree: () => Effect.succeed({} as never),
+  }),
+  layerNoTaskFolders,
+  Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
+    runForThread: () => Effect.succeed({ status: "no-script" }),
+  }),
+);
 const layerProjectServiceTest = Layer.mock(ProjectService.ProjectService)({
   getById: () => Effect.succeedNone,
 });
@@ -1794,6 +1802,27 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
             conversationOnly.storedEvents.map((stored) => stored.event.type),
             ["thread.metadata-updated", "checkpoint.rollback-requested"],
           );
+          yield* orchestrator.dispatch({
+            type: "thread.delete",
+            commandId: CommandId.make("runtime-rollback-delete"),
+            threadId,
+          });
+          const deletedCommandId = CommandId.make("runtime-rollback-deleted");
+          const deletedSequence = yield* orchestrator.getThreadEventSequence(threadId);
+          const deleted = yield* orchestrator
+            .dispatch({
+              type: "checkpoint.rollback",
+              commandId: deletedCommandId,
+              threadId,
+              checkpointId,
+              scopeId: scope.id,
+              restoreFiles: false,
+            })
+            .pipe(Effect.flip);
+          assert.instanceOf(deleted, Orchestrator.OrchestratorDispatchError);
+          assert.equal(deleted.cause, `Thread ${threadId} is deleted.`);
+          assert.equal(yield* orchestrator.getThreadEventSequence(threadId), deletedSequence);
+          assert.deepEqual(yield* outbox.listByCommandId(deletedCommandId), []);
         } else {
           const error = yield* rollback.pipe(Effect.flip);
           assert.instanceOf(error, Orchestrator.OrchestratorDispatchError);
@@ -1807,6 +1836,28 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
             [],
           );
           assert.deepEqual(yield* outbox.listByCommandId(commandId), []);
+          if (status === "error") {
+            // A failed capture still pins the conversation.
+            const conversationCommandId = CommandId.make("runtime-rollback-error-conversation");
+            const conversationOnly = yield* orchestrator.dispatch({
+              type: "checkpoint.rollback",
+              commandId: conversationCommandId,
+              threadId,
+              checkpointId,
+              scopeId: scope.id,
+              restoreFiles: false,
+            });
+            assert.deepEqual(
+              conversationOnly.storedEvents.map((stored) => stored.event.type),
+              ["thread.metadata-updated", "checkpoint.rollback-requested"],
+            );
+            assert.deepEqual(
+              (yield* outbox.listByCommandId(conversationCommandId)).map(
+                (effect) => effect.request.type,
+              ),
+              ["provider-thread.rollback"],
+            );
+          }
         }
       }
     }).pipe(Effect.provide(Layer.fresh(layerTest))),
@@ -2249,9 +2300,10 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
 
       yield* busy.ask;
       yield* idle.ask;
+      // The wake reads the workspace from disk; behind the busy lock it would never arrive here.
+      yield* Fiber.join(idleWoken);
       yield* TestClock.adjust("1 minute");
       yield* Fiber.join(busyLock);
-      yield* Fiber.join(idleWoken);
 
       assert.deepEqual(order, ["idle coordinator woken", "busy coordinator's lock released"]);
     }),
@@ -2613,7 +2665,6 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
       const beforeSequence = yield* eventSink.latestSequence();
       for (const [index, answers] of [
         { color: " ", sizes: ["Small"] },
-        { color: "Blue", sizes: [] },
         { color: "Blue", sizes: ["Small", " "] },
         { color: "Blue", sizes: ["Small"], extra: " " },
       ].entries()) {
@@ -2638,7 +2689,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
         commandId: CommandId.make("runtime-async-question-answer"),
         threadId,
         requestId,
-        answers: { color: "  Blue  ", sizes: ["Small", "Large"], note: "" },
+        answers: { color: "  Blue  ", sizes: [], note: "" },
       };
       const accepted = yield* orchestrator.dispatch(command);
       const repeated = yield* orchestrator.dispatch(command);
@@ -2663,7 +2714,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
         });
       }
       assert.equal(answered.messages.length, 1);
-      assert.equal(answered.messages[0]?.text, "Which color?\nBlue\n\nWhich sizes?\nSmall, Large");
+      assert.equal(answered.messages[0]?.text, "Which color?\nBlue\n\nWhich sizes?\nNone selected");
       assert.equal(answered.messages[0]?.role, "user");
       assert.equal(answered.runs.length, 1);
       assert.deepEqual(
@@ -2679,6 +2730,47 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
         .pipe(Effect.result);
       assert.equal(duplicate._tag, "Failure");
       assert.equal((yield* orchestrator.getThreadProjection(threadId)).messages.length, 1);
+    }),
+  );
+
+  it.effect("sends an async answer's files as attachments on the answer message", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threadId = ThreadId.make("runtime-async-question-files");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("runtime-async-question-files-create"),
+        createdBy: "user",
+        creationSource: "web",
+        threadId,
+        projectId: ProjectId.make("runtime-async-question-files-project"),
+        title: "Async question with files",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: process.cwd(),
+      });
+      const { requestId } = yield* seedPendingQuestion(threadId, null, { type: "message" });
+      const screenshot = {
+        type: "image" as const,
+        id: createAttachmentId(threadId)!,
+        name: "screen.png",
+        mimeType: "image/png",
+        sizeBytes: 3,
+      };
+      yield* orchestrator.dispatch({
+        type: "runtime-request.respond",
+        commandId: CommandId.make("runtime-async-question-files-answer"),
+        threadId,
+        requestId,
+        answers: { color: "", sizes: ["Small"], note: "" },
+        attachmentsByQuestionId: { color: [screenshot] },
+      });
+      const answered = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(answered.messages.length, 1);
+      assert.equal(answered.messages[0]?.text, "Which color?\n\nWhich sizes?\nSmall");
+      assert.deepEqual(answered.messages[0]?.attachments, [screenshot]);
     }),
   );
 
@@ -3582,6 +3674,353 @@ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (
       );
       assert.deepEqual(interrupted.providerTurns, []);
       assert.isFalse(yield* effectWorker.runOnce());
+    }),
+  );
+
+  it.effect("cancels a named queued run and leaves the active one running", () =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectService.ProjectService;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threadManagement = yield* ThreadManagementService.ThreadManagementService;
+      const projectId = ProjectId.make("runtime-layer-queued-interrupt-project");
+      const threadId = ThreadId.make("runtime-layer-queued-interrupt-thread");
+
+      yield* projects.create({
+        commandId: CommandId.make("runtime-layer-queued-interrupt-project-create"),
+        projectId,
+        title: "Queued interrupt project",
+        workspaceRoot: "/tmp/runtime-layer-queued-interrupt-project",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-queued-interrupt-create"),
+        threadId,
+        projectId,
+        title: "Queued interrupt",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      for (const [key, dispatchMode] of [
+        ["active", { type: "start_immediately" }],
+        ["queued", { type: "queue_after_active" }],
+      ] as const) {
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make(`runtime-layer-queued-interrupt-${key}`),
+          threadId,
+          messageId: MessageId.make(`runtime-layer-queued-interrupt-${key}`),
+          text: key,
+          attachments: [],
+          modelSelection,
+          dispatchMode,
+        });
+      }
+      const [active, queued] = (yield* orchestrator.getThreadProjection(threadId)).runs;
+      assert.equal(queued?.status, "queued");
+
+      const interrupt = yield* threadManagement.interruptThread({
+        projectId,
+        commandId: CommandId.make("runtime-layer-queued-interrupt-command"),
+        threadId,
+        runId: queued!.id,
+      });
+      assert.equal(interrupt.type, "interrupt_requested");
+
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      assert.deepEqual(
+        after.runs.map((run) => run.status),
+        [active!.status, "cancelled"],
+      );
+    }),
+  );
+});
+
+it.layer(layerSharedApplicationDataPlaneTest)("run output after a stop", (it) => {
+  it.effect("takes a result a completed turn still owes from the turn after it", () =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectService.ProjectService;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const threadManagement = yield* ThreadManagementService.ThreadManagementService;
+      const projectId = ProjectId.make("runtime-layer-owed-output-project");
+      const threadId = ThreadId.make("runtime-layer-owed-output-thread");
+      yield* projects.create({
+        commandId: CommandId.make("runtime-layer-owed-output-project-create"),
+        projectId,
+        title: "Owed output project",
+        workspaceRoot: "/tmp/runtime-layer-owed-output-project",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-owed-output-create"),
+        threadId,
+        projectId,
+        title: "Owed output",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      const send = (
+        key: string,
+        outputSchema?: { readonly type: "object" },
+        freshContext?: boolean,
+      ) =>
+        orchestrator.dispatch({
+          type: "message.dispatch",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make(`runtime-layer-owed-output-${key}`),
+          threadId,
+          messageId: MessageId.make(`runtime-layer-owed-output-${key}`),
+          text: key,
+          attachments: [],
+          modelSelection,
+          ...(outputSchema === undefined ? {} : { outputSchema }),
+          ...(freshContext === undefined ? {} : { freshContext }),
+          dispatchMode: { type: "start_immediately" },
+        });
+      const runOf = Effect.fn(function* (key: string) {
+        const runs = (yield* orchestrator.getThreadProjection(threadId)).runs;
+        return runs.find(
+          (run) => run.userMessageId === MessageId.make(`runtime-layer-owed-output-${key}`),
+        )!;
+      });
+      // The agent ends its turn, to wait for something or because it is done.
+      const complete = Effect.fn(function* (key: string) {
+        const run = yield* runOf(key);
+        yield* eventSink.write({
+          events: [
+            {
+              id: EventId.make(`${threadId}-${key}-completed`),
+              type: "run.updated",
+              threadId,
+              runId: run.id,
+              occurredAt: run.requestedAt,
+              payload: { ...run, status: "completed", completedAt: run.requestedAt },
+            },
+          ],
+        });
+      });
+      const submit = (key: string, json = '{"head":"abc"}') =>
+        threadManagement.submitRunOutput({
+          threadId,
+          commandId: CommandId.make(`runtime-layer-owed-output-submit-${key}`),
+          json,
+        });
+      const refused = Effect.fn(function* (key: string) {
+        const rejected = yield* submit(key).pipe(Effect.flip);
+        assert.include(rejected.message, "not asked for a result");
+      });
+      yield* send("asked", { type: "object" });
+      const asked = yield* runOf("asked");
+      yield* complete("asked");
+      yield* send("woken");
+
+      const accepted = yield* submit("asked");
+      assert.equal(accepted.runId, asked.id);
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      assert.deepEqual(after.runs.find((run) => run.id === asked.id)?.output?.value, {
+        head: "abc",
+      });
+
+      // Its reply was lost, and the retry comes once the next step's turn asked for a result.
+      yield* complete("woken");
+      yield* send("next", { type: "object" });
+      assert.equal((yield* submit("asked")).runId, asked.id);
+      assert.isUndefined((yield* runOf("next")).output);
+
+      // A correction gave the result `next` owed, so a later plain turn owes nothing.
+      yield* complete("next");
+      yield* send("correction", { type: "object" });
+      yield* submit("correction");
+      yield* complete("correction");
+      yield* send("plain");
+      yield* refused("plain");
+
+      // A turn in a fresh conversation cannot answer for one the agent no longer sees.
+      yield* complete("plain");
+      yield* send("before-fresh", { type: "object" });
+      yield* complete("before-fresh");
+      yield* send("fresh", undefined, true);
+      yield* refused("fresh");
+    }),
+  );
+
+  it.effect("turns down a provider command asked for a result", () =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectService.ProjectService;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projectId = ProjectId.make("runtime-layer-command-output-project");
+      const threadId = ThreadId.make("runtime-layer-command-output-thread");
+      yield* projects.create({
+        commandId: CommandId.make("runtime-layer-command-output-project-create"),
+        projectId,
+        title: "Command output project",
+        workspaceRoot: "/tmp/runtime-layer-command-output-project",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-command-output-create"),
+        threadId,
+        projectId,
+        title: "Command output",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      const rejected = yield* orchestrator
+        .dispatch({
+          type: "message.dispatch",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make("runtime-layer-command-output-message"),
+          threadId,
+          messageId: MessageId.make("runtime-layer-command-output-message"),
+          text: "/goal Review the changes",
+          attachments: [],
+          modelSelection,
+          outputSchema: { type: "object" },
+          dispatchMode: { type: "start_immediately" },
+        })
+        .pipe(Effect.flip);
+      assert.include(String(rejected.cause), "cannot be asked for a result");
+      assert.deepEqual((yield* orchestrator.getThreadProjection(threadId)).runs, []);
+
+      // Nor can a queued request for a result be edited into one.
+      for (const [key, text, dispatchMode] of [
+        ["active", "Start", { type: "start_immediately" }],
+        ["queued", "Return a verdict.", { type: "queue_after_active" }],
+      ] as const) {
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make(`runtime-layer-command-output-${key}`),
+          threadId,
+          messageId: MessageId.make(`runtime-layer-command-output-${key}`),
+          text,
+          attachments: [],
+          modelSelection,
+          ...(key === "queued" ? { outputSchema: { type: "object" } } : {}),
+          dispatchMode,
+        });
+      }
+      const queued = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
+        (run) => run.status === "queued",
+      )!;
+      const edit = (key: string, text: string) =>
+        orchestrator.dispatch({
+          type: "queued-run.edit",
+          commandId: CommandId.make(`runtime-layer-command-output-edit-${key}`),
+          threadId,
+          runId: queued.id,
+          text,
+        });
+      const refused = yield* edit("goal", "/goal Review the changes").pipe(Effect.flip);
+      assert.include(String(refused.cause), "cannot be asked for a result");
+      yield* edit("prompt", "Return a verdict, briefly.");
+    }),
+  );
+
+  it.effect("turns down a result submitted after a stop was requested", () =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectService.ProjectService;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const threadManagement = yield* ThreadManagementService.ThreadManagementService;
+      const projectId = ProjectId.make("runtime-layer-stopped-output-project");
+      const threadId = ThreadId.make("runtime-layer-stopped-output-thread");
+      yield* projects.create({
+        commandId: CommandId.make("runtime-layer-stopped-output-project-create"),
+        projectId,
+        title: "Stopped output project",
+        workspaceRoot: "/tmp/runtime-layer-stopped-output-project",
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-stopped-output-create"),
+        threadId,
+        projectId,
+        title: "Stopped output",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        createdBy: "user",
+        creationSource: "web",
+        commandId: CommandId.make("runtime-layer-stopped-output-message"),
+        threadId,
+        messageId: MessageId.make("runtime-layer-stopped-output-message"),
+        text: "Return a verdict.",
+        attachments: [],
+        modelSelection,
+        outputSchema: { type: "object" },
+        dispatchMode: { type: "start_immediately" },
+      });
+      const run = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+      // The stop is asked for while the provider has not settled it, so the run is still active.
+      const at = run.requestedAt;
+      yield* eventSink.write({
+        events: [
+          {
+            id: EventId.make(`${threadId}-interrupt-request`),
+            type: "turn-item.updated",
+            threadId,
+            runId: run.id,
+            occurredAt: at,
+            payload: {
+              id: TurnItemId.make(`${threadId}-interrupt-request`),
+              type: "run_interrupt_request",
+              threadId,
+              runId: run.id,
+              nodeId: run.rootNodeId,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: null,
+              parentItemId: null,
+              ordinal: 90,
+              status: "completed",
+              title: "Interrupt requested",
+              startedAt: at,
+              completedAt: at,
+              updatedAt: at,
+              message: "Stopped by user",
+            },
+          },
+        ],
+      });
+
+      const rejected = yield* threadManagement
+        .submitRunOutput({
+          threadId,
+          commandId: CommandId.make("runtime-layer-stopped-output-submit"),
+          json: "{}",
+        })
+        .pipe(Effect.flip);
+      assert.include(String((rejected as { cause?: unknown }).cause), "was stopped");
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      assert.isUndefined(after.runs[0]?.output);
     }),
   );
 });

@@ -93,6 +93,8 @@ function unwrapEnsureSshEnvironmentResult(result: unknown) {
 }
 
 contextBridge.exposeInMainWorld("desktopBridge", {
+  getDatabaseMigrationProgress: () =>
+    ipcRenderer.invoke(IpcChannels.GET_DATABASE_MIGRATION_PROGRESS_CHANNEL),
   getBaskuleServer: () => ipcRenderer.sendSync(IpcChannels.GET_BASKULE_SERVER_CHANNEL),
   connectBaskuleServer: (address) =>
     ipcRenderer.invoke(IpcChannels.CONNECT_BASKULE_SERVER_CHANNEL, address),
@@ -317,7 +319,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.UPDATE_SET_CHANNEL_CHANNEL, channel),
   checkForUpdate: () => ipcRenderer.invoke(IpcChannels.UPDATE_CHECK_CHANNEL),
   downloadUpdate: () => ipcRenderer.invoke(IpcChannels.UPDATE_DOWNLOAD_CHANNEL),
-  installUpdate: () => ipcRenderer.invoke(IpcChannels.UPDATE_INSTALL_CHANNEL),
+  installUpdate: (expectedVersion) =>
+    ipcRenderer.invoke(IpcChannels.UPDATE_INSTALL_CHANNEL, expectedVersion),
   cliCommand: {
     getState: () => ipcRenderer.invoke(IpcChannels.CLI_COMMAND_GET_STATE_CHANNEL),
     install: () => ipcRenderer.invoke(IpcChannels.CLI_COMMAND_INSTALL_CHANNEL),

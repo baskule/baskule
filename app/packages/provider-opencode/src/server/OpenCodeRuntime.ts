@@ -1,3 +1,13 @@
+import type { ModelSelection } from "@t3tools/contracts";
+import {
+  DEFAULT_VARIANT_CHOICE_ID,
+  getModelSelectionStringOptionValue,
+} from "@t3tools/shared/model";
+export function openCodeVariant(selection: ModelSelection): string | undefined {
+  const variant = getModelSelectionStringOptionValue(selection, "variant");
+  return variant === DEFAULT_VARIANT_CHOICE_ID ? undefined : variant;
+}
+
 import { resolveProviderProbeTimeoutMs } from "@t3tools/provider-core/server/snapshotProbe";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -13,6 +23,8 @@ import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
+import * as SecureRandom from "effect/crypto/SecureRandom";
+import * as Base64Url from "effect/encoding/Base64Url";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
@@ -205,6 +217,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
   const hostPlatform = yield* HostProcess.Platform;
   const serverLedger = yield* OpenCodeServerLedger.OpenCodeServerLedger;
   const agentScope = yield* AgentScope;
+  const random = yield* SecureRandom.SecureRandom;
   // npm's Windows shim lets the child escape libuv kill-on-close; run its executable directly.
   const resolveCommand = (command: string, args: ReadonlyArray<string>, env?: NodeJS.ProcessEnv) =>
     resolveSpawnCommand(command, args, { ...(env ? { env } : {}), bypassNpmShim: true });
@@ -295,11 +308,14 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       shared: true,
     });
     const spawnCommand = yield* resolveCommand(launch.command, launch.args, input.environment);
-    const serverPassword = resolveOpenCodeServerPassword({
-      external: false,
-      ...(input.serverPassword !== undefined ? { serverPassword: input.serverPassword } : {}),
-      ...(input.environment !== undefined ? { environment: input.environment } : {}),
-    });
+    // A server T3 starts always has a password; without a configured one it is generated and
+    // kept in memory.
+    const serverPassword =
+      resolveOpenCodeServerPassword({
+        external: false,
+        ...(input.serverPassword !== undefined ? { serverPassword: input.serverPassword } : {}),
+        ...(input.environment !== undefined ? { environment: input.environment } : {}),
+      }) || Base64Url.encode(yield* random.randomBytes(32));
 
     // Scopes close in reverse order. Forking this before the group kill is
     // registered forgets the ledger entry only once the group is stopped.
@@ -311,7 +327,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           shell: spawnCommand.shell,
           env: {
             ...input.environment,
-            ...(serverPassword !== undefined ? { OPENCODE_SERVER_PASSWORD: serverPassword } : {}),
+            OPENCODE_SERVER_PASSWORD: serverPassword,
             // The value is set explicitly (rather than relying on inheritance) because
             // `extendEnv` is false whenever `input.environment` is provided.
             OPENCODE_CONFIG_CONTENT: resolveOpenCodeConfigContent(input.environment),
@@ -452,7 +468,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
 
     return {
       url,
-      ...(serverPassword !== undefined ? { serverPassword } : {}),
+      serverPassword,
       version,
       isRunning: child.isRunning.pipe(Effect.orElseSucceed(() => false)),
       exitCode: child.exitCode.pipe(
@@ -491,5 +507,5 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(OpenCodeRuntime, makeOpenCodeRuntime).pipe(
-  Layer.provide(NetService.layer),
+  Layer.provide(Layer.merge(NetService.layer, SecureRandom.layerWebCrypto)),
 );

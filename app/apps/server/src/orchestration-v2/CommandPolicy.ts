@@ -12,6 +12,7 @@ import {
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
+import { isSlashCommand } from "@t3tools/shared/composerTrigger";
 import { latestExecutedRun } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -96,6 +97,26 @@ export function goalCommandStopsActiveRun(
   }
 }
 
+export function resolveMessageDispatch(
+  projection: OrchestrationV2ThreadProjection,
+  message: Pick<
+    Extract<OrchestrationV2Command, { readonly type: "message.dispatch" }>,
+    "dispatchMode" | "deliveryIntent" | "text" | "attachments" | "author"
+  >,
+): MessageDispatchMode {
+  const mode = resolveMessageDispatchIntent(
+    projection,
+    message.dispatchMode,
+    message.deliveryIntent,
+    message.author,
+  );
+  // A provider runs a steered command in place of the turn's task, so commands wait.
+  return mode.type === "steer_active" && isSlashCommand(message)
+    ? { type: "queue_after_active" }
+    : mode;
+}
+
+/** How a message joins active work when it is free to steer. */
 export function resolveMessageDispatchIntent(
   projection: OrchestrationV2ThreadProjection,
   requestedMode: MessageDispatchMode,

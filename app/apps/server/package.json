@@ -1,6 +1,6 @@
 {
   "name": "t3",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -20,7 +20,6 @@
     "build:bundle": "vp pack",
     "build:exe": "node scripts/cli.ts build-exe",
     "start": "node dist/bin.mjs",
-    "typecheck": "effect-tsgo tsrs --noEmit",
     "speech:catalog:sync": "node scripts/sync-speech-catalog.ts",
     "speech:catalog:check": "node scripts/sync-speech-catalog.ts --check",
     "test": "vp test run",
@@ -47,10 +46,10 @@
     "stream-json": "3.7.0",
     "transcribe-cpp": "0.4.1",
     "undici": "catalog:",
+    "ws": "catalog:",
     "yaml": "catalog:",
     "yauzl": "^3.4.0",
-    "zod": "^4.6.5",
-    "ws": "catalog:"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@effect/graphql-generator": "catalog:",

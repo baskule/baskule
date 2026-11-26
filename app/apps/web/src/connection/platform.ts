@@ -63,6 +63,7 @@ import {
   type DesktopSecondaryBootstrapsRead,
 } from "./desktopLocal";
 import * as ConnectionStorage from "./storage";
+import { browserThreadTriageOutboxStore } from "./threadTriageOutboxStore";
 import { clientPresentationMetadata } from "./clientMetadata";
 import { baskule } from "../baskule/flags"; // baskule:
 import { layerSpaceConnectionSource } from "../baskule/spaces"; // baskule:
@@ -848,7 +849,11 @@ const layerEnvironmentOwnedDataCleanup = Layer.succeed(
     clear: Effect.fn("Persistence.EnvironmentOwnedDataCleanup.clear")(function (environmentId) {
       return Effect.sync(() => {
         clearComposerDraftsEnvironment(environmentId);
-      });
+      }).pipe(
+        Effect.andThen(
+          Effect.ignore(browserThreadTriageOutboxStore.clearEnvironment(environmentId)),
+        ),
+      );
     }),
   }),
 );

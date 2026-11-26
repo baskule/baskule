@@ -125,7 +125,7 @@ it("rejects stale transport and server control generations independently", () =>
     type: "input",
     binding: connected,
     controlGeneration: 7,
-    input: { type: "text", text: "hello" },
+    input: { type: "selectMenu", id: "select-1", index: 2 },
   } as const;
   bridge.receive({ ...command, controlGeneration: 6 });
   bridge.receive({ ...command, binding: { ...connected, connectionId: "replacement" } });

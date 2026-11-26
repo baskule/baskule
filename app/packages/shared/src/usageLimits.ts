@@ -9,7 +9,6 @@ import {
   type ProviderConsumeResetCreditInput,
   type ServerProviderSlashCommand,
   isProviderAvailable,
-  PROVIDER_DISPLAY_NAMES,
   type ServerProvider,
   type ServerProviderUsageLimits,
   type ServerProviderUsageWindow,
@@ -263,18 +262,9 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
     ];
     const winner = fresher ? next : previous;
     const creditSource = creditSources.get(key);
-    // A hub e-mail names the account better than the driver's default instance name.
-    const hubEmail = [previous, next].some(
-      (account) => account.environments.length === 0 && account.email,
-    );
-    const displayName = previous.displayName ?? next.displayName;
     accounts.set(key, {
       ...previous,
-      displayName:
-        hubEmail &&
-        displayName?.toLowerCase() === PROVIDER_DISPLAY_NAMES[previous.driver]?.toLowerCase()
-          ? null
-          : displayName,
+      displayName: previous.displayName ?? next.displayName,
       plan: planSources.get(key)?.plan ?? previous.plan ?? next.plan,
       accentColor: previous.accentColor ?? next.accentColor,
       environments,
@@ -411,6 +401,18 @@ function poolMember(account: LimitAccount, reported: ServerProviderUsageWindow) 
   return { account, window: reported, refillPercent: reported.usedPercent };
 }
 
+/** Neumaier compensated summation. */
+function compensatedSum(values: readonly number[]): number {
+  let sum = 0;
+  let correction = 0;
+  for (const value of values) {
+    const next = sum + value;
+    correction += Math.abs(sum) >= Math.abs(value) ? sum - next + value : value - next + sum;
+    sum = next;
+  }
+  return sum + correction;
+}
+
 function poolWindows(accounts: readonly LimitAccount[], now: number): readonly LimitPoolWindow[] {
   const byKey = new Map<string, LimitPoolMember[]>();
   for (const account of accounts) {
@@ -430,7 +432,9 @@ function poolWindows(accounts: readonly LimitAccount[], now: number): readonly L
     const memberByAccount = new Map(members.map((member) => [member.account.key, member]));
     const first = members[0]!.window;
     const id = first.id;
-    const usedPercent = members.reduce((sum, m) => sum + m.window.usedPercent, 0) / members.length;
+    const usedPercent =
+      compensatedSum(members.map((m) => m.window.usedPercent).sort((a, b) => a - b)) /
+      members.length;
     // Judge pace only for windows with reset clocks; others add spend without elapsed time.
     const timed = members.flatMap((m) => {
       const share = elapsedShare(m.window, now);
@@ -593,6 +597,7 @@ export function collectProviderUsageLimits(
   instanceId: ProviderInstanceId,
   providers: readonly ServerProvider[],
   now: number,
+  _model: string | null = null,
 ): UsageLimitsReport | null {
   const selected = providers.find((provider) => provider.instanceId === instanceId);
   if (!selected || !hasProviderUsageLimits(selected.driver, providers)) return null;
@@ -606,8 +611,9 @@ export function collectProviderUsageLimits(
   >();
   for (const provider of providersWithLimits(providers)) {
     if (provider.driver !== selected.driver || !provider.usageLimits) continue;
+    const accountKey = resolveKey(nativeReport(provider));
     const snapshot = { provider, limits: provider.usageLimits };
-    const key = resolveKey(nativeReport(provider)) ?? `instance:${provider.instanceId}`;
+    const key = accountKey ?? `instance:${provider.instanceId}`;
     const previous = nativeByAccount.get(key);
     const previousUsable = previous ? limitsNotice(previous.usage.limits) === null : false;
     const usable = limitsNotice(snapshot.limits) === null;

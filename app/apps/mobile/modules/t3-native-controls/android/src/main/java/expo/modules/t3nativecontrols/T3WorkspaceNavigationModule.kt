@@ -72,6 +72,15 @@ class T3WorkspaceNavigationModule : Module() {
         view.labels = value
       }
       Prop("tabs") { view: T3WorkspaceNavigationView, value: List<String> -> view.tabs = value }
+      Prop("tabTitles") { view: T3WorkspaceNavigationView, value: Map<String, String> ->
+        view.tabTitles = value
+      }
+      Prop("expandedTabTitles") { view: T3WorkspaceNavigationView, value: Map<String, String> ->
+        view.expandedTabTitles = value
+      }
+      Prop("newThreadTitle") { view: T3WorkspaceNavigationView, value: String ->
+        view.newThreadTitle = value
+      }
       Prop("selectedTab") { view: T3WorkspaceNavigationView, value: String ->
         view.selectedTab = value
       }
@@ -129,6 +138,9 @@ class T3WorkspaceNavigationView(
   private val onTabSelected by EventDispatcher()
   private val onNewThread by EventDispatcher()
   private val onOverlayChange by EventDispatcher()
+  var tabTitles by mutableStateOf(emptyMap<String, String>())
+  var expandedTabTitles by mutableStateOf(emptyMap<String, String>())
+  var newThreadTitle by mutableStateOf<String?>(null)
   var labels by mutableStateOf(
     mapOf(
       "threads" to "Chats",
@@ -373,7 +385,7 @@ class T3WorkspaceNavigationView(
         .height(FAB_SIZE)
         .width(lerp(FAB_SIZE, EXPANDED_RAIL_WIDTH - RAIL_INSET * 2, fraction))
         .alpha(if (newEnabled) 1f else DISABLED_ALPHA)
-        .semantics { contentDescription = labels.getValue("newChat") },
+        .semantics { contentDescription = newThreadTitle ?: labels.getValue("newChat") },
     ) {
       Row(
         Modifier.padding(start = (FAB_SIZE - ICON_SIZE) / 2).clipToBounds(),
@@ -381,7 +393,7 @@ class T3WorkspaceNavigationView(
       ) {
         Icon(painterResource(R.drawable.t3_new_thread), contentDescription = null)
         Text(
-          labels.getValue("newChat"),
+          newThreadTitle ?: labels.getValue("newChat"),
           Modifier.padding(start = 12.dp).alpha(labelAlpha(fraction)).clearAndSetSemantics {},
           style = MaterialTheme.typography.labelLarge,
           fontSize = (14 * textScale).sp,
@@ -429,9 +441,9 @@ class T3WorkspaceNavigationView(
     }
   }
 
-  private fun tabTitle(tab: String) = labels.getValue(tab)
+  private fun tabTitle(tab: String) = tabTitles[tab] ?: labels.getValue(tab)
 
-  private fun expandedTabTitle(tab: String) = tabTitle(tab)
+  private fun expandedTabTitle(tab: String) = expandedTabTitles[tab] ?: tabTitle(tab)
 
   @Composable
   private fun tabIconPainter(tab: String) = painterResource(

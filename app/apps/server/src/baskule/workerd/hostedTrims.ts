@@ -48,7 +48,7 @@ export const layerKeybindings = Layer.succeed(Keybindings.Keybindings, {
 
 // Telemetry is unconditionally disabled by SpaceServer's managed configuration.
 export const layerAnalytics = Layer.succeed(AnalyticsService.AnalyticsService, {
-  record: () => Effect.void,
+  record: () => Effect.succeed(false),
   flush: Effect.void,
   recordOwners: () => Effect.void,
 });

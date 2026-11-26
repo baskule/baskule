@@ -39,19 +39,71 @@ interface LiveEntry {
   readonly instance: ProviderInstance;
   readonly scope: Scope.Closeable;
   readonly entry: ProviderInstanceConfig;
+  readonly setPresentation: (entry: ProviderInstanceConfig) => void;
 }
 
 interface RegistryState {
   readonly entries: Ref.Ref<ReadonlyMap<ProviderInstanceId, LiveEntry>>;
   readonly unavailable: Ref.Ref<ReadonlyMap<ProviderInstanceId, ServerProvider>>;
-  // Configs parked on an unreadable secret. A settings save that leaves one alone does not read
-  // its vault again, so a locked vault is not prompted for on every unrelated save.
-  readonly secretsUnreadable: Ref.Ref<ReadonlyMap<ProviderInstanceId, ProviderInstanceConfig>>;
   readonly changes: PubSub.PubSub<void>;
 }
 
 const entryEqual = (a: ProviderInstanceConfig, b: ProviderInstanceConfig): boolean =>
   Equal.equals(a, b);
+
+const withoutPresentation = ({
+  displayName: _displayName,
+  accentColor: _accentColor,
+  ...runtime
+}: ProviderInstanceConfig) => runtime;
+
+// Display name and accent colour are only labels; changing them must not stop the instance's sessions.
+const runtimeEqual = (a: ProviderInstanceConfig, b: ProviderInstanceConfig): boolean =>
+  Equal.equals(withoutPresentation(a), withoutPresentation(b));
+
+// Drivers stamp the presentation they were created with into every snapshot, so a renamed
+// instance kept live restamps what it reports.
+const withLivePresentation = (
+  instance: ProviderInstance,
+  created: ProviderInstanceConfig,
+  defaultSnapshotDisplayName: string | undefined,
+) => {
+  let current = created;
+  const restamp = <S extends ServerProvider>(snapshot: S): S => {
+    const next: { -readonly [K in keyof S]: S[K] } = { ...snapshot };
+    for (const key of ["displayName", "accentColor"] as const) {
+      const value = current[key];
+      if (value === created[key]) continue;
+      const stamped = value || (key === "displayName" ? defaultSnapshotDisplayName : undefined);
+      if (stamped) next[key] = stamped;
+      else delete next[key];
+    }
+    return next;
+  };
+  const { snapshot, snapshotForCwd } = instance;
+  const wrapped: ProviderInstance = {
+    ...instance,
+    get displayName() {
+      return current.displayName;
+    },
+    get accentColor() {
+      return current.accentColor;
+    },
+    snapshot: {
+      ...snapshot,
+      getSnapshot: Effect.suspend(() => snapshot.getSnapshot).pipe(Effect.map(restamp)),
+      refresh: Effect.suspend(() => snapshot.refresh).pipe(Effect.map(restamp)),
+      streamChanges: Stream.suspend(() => snapshot.streamChanges).pipe(Stream.map(restamp)),
+    },
+    ...(snapshotForCwd
+      ? { snapshotForCwd: (cwd: string) => snapshotForCwd(cwd).pipe(Effect.map(restamp)) }
+      : {}),
+  };
+  const setPresentation = (entry: ProviderInstanceConfig) => {
+    current = entry;
+  };
+  return { instance: wrapped, setPresentation };
+};
 
 type BlockedReason = (driver: ProviderDriverKind) => string | undefined;
 
@@ -67,7 +119,6 @@ const buildEntry = Effect.fn("ProviderInstanceRegistry.buildEntry")(function* <R
   | {
       readonly kind: "unavailable";
       readonly snapshot: ServerProvider;
-      readonly secretsUnreadable?: true;
     },
   never,
   R
@@ -154,13 +205,14 @@ const buildEntry = Effect.fn("ProviderInstanceRegistry.buildEntry")(function* <R
     };
   }
 
+  const { instance, setPresentation } = withLivePresentation(
+    createResult.success,
+    entry,
+    driver.metadata.snapshotOmitsDisplayName ? undefined : driver.metadata.displayName,
+  );
   return {
     kind: "live" as const,
-    live: {
-      instance: createResult.success,
-      scope: childScope,
-      entry,
-    },
+    live: { instance, scope: childScope, entry, setPresentation },
   };
 });
 
@@ -178,7 +230,6 @@ const makeReconcile = <R>(input: {
     Effect.gen(function* () {
       const previousEntries = yield* Ref.get(state.entries);
       const previousUnavailable = yield* Ref.get(state.unavailable);
-      const previousSecretsUnreadable = yield* Ref.get(state.secretsUnreadable);
       const nextRaw = Object.entries(configMap);
       const nextKeys = new Set<ProviderInstanceId>(
         nextRaw.map(([raw]) => ProviderInstanceId.make(raw)),
@@ -195,7 +246,7 @@ const makeReconcile = <R>(input: {
         const nextEntry = configMap[instanceId];
         if (
           nextEntry !== undefined &&
-          (rebuild.has(instanceId) || !entryEqual(live.entry, nextEntry))
+          (rebuild.has(instanceId) || !runtimeEqual(live.entry, nextEntry))
         ) {
           replacedIds.add(instanceId);
         }
@@ -213,17 +264,10 @@ const makeReconcile = <R>(input: {
         }
       }
 
-      const parkedSnapshot = (instanceId: ProviderInstanceId, entry: ProviderInstanceConfig) => {
-        const parked = previousSecretsUnreadable.get(instanceId);
-        return parked !== undefined && entryEqual(parked, entry)
-          ? previousUnavailable.get(instanceId)
-          : undefined;
-      };
-
       const builtEntries = new Map<ProviderInstanceId, LiveEntry>();
       const builtUnavailable = new Map<ProviderInstanceId, ServerProvider>();
-      const builtSecretsUnreadable = new Map<ProviderInstanceId, ProviderInstanceConfig>();
       let orderChanged = false;
+      let presentationChanged = false;
       const previousOrder = [...previousEntries.keys()];
       const nextOrder: Array<ProviderInstanceId> = [];
 
@@ -233,16 +277,15 @@ const makeReconcile = <R>(input: {
 
         const existing = previousEntries.get(instanceId);
         if (existing !== undefined && !replacedIds.has(instanceId)) {
-          builtEntries.set(instanceId, existing);
+          if (entryEqual(existing.entry, entry)) {
+            builtEntries.set(instanceId, existing);
+          } else {
+            existing.setPresentation(entry);
+            builtEntries.set(instanceId, { ...existing, entry });
+            presentationChanged = true;
+          }
           continue;
         }
-        const parked = parkedSnapshot(instanceId, entry);
-        if (parked !== undefined) {
-          builtUnavailable.set(instanceId, parked);
-          builtSecretsUnreadable.set(instanceId, entry);
-          continue;
-        }
-
         const result = yield* buildEntry({
           driversById,
           blockedReason,
@@ -255,7 +298,6 @@ const makeReconcile = <R>(input: {
           builtEntries.set(instanceId, result.live);
         } else {
           builtUnavailable.set(instanceId, result.snapshot);
-          if (result.secretsUnreadable) builtSecretsUnreadable.set(instanceId, entry);
         }
       }
 
@@ -271,6 +313,7 @@ const makeReconcile = <R>(input: {
       }
 
       const entriesChanged =
+        presentationChanged ||
         orderChanged ||
         removedIds.length > 0 ||
         replacedIds.size > 0 ||
@@ -285,7 +328,6 @@ const makeReconcile = <R>(input: {
 
       yield* Ref.set(state.entries, builtEntries);
       yield* Ref.set(state.unavailable, builtUnavailable);
-      yield* Ref.set(state.secretsUnreadable, builtSecretsUnreadable);
 
       if (entriesChanged || unavailableChanged) {
         yield* PubSub.publish(state.changes, undefined);
@@ -322,13 +364,10 @@ export const makeProviderInstanceRegistry = Effect.fn(
 
   const entries = yield* Ref.make<ReadonlyMap<ProviderInstanceId, LiveEntry>>(new Map());
   const unavailable = yield* Ref.make<ReadonlyMap<ProviderInstanceId, ServerProvider>>(new Map());
-  const secretsUnreadable = yield* Ref.make<
-    ReadonlyMap<ProviderInstanceId, ProviderInstanceConfig>
-  >(new Map());
   const changes = yield* PubSub.unbounded<void>();
   yield* Effect.addFinalizer(() => PubSub.shutdown(changes));
 
-  const state: RegistryState = { entries, unavailable, secretsUnreadable, changes };
+  const state: RegistryState = { entries, unavailable, changes };
   const reconcileWithR = makeReconcile({
     state,
     driversById,

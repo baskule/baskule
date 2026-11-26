@@ -13,7 +13,11 @@ import {
   type VoiceTranscriptionOptions,
 } from "@t3tools/client-runtime/voice-input";
 import type { PreparedConnection } from "@t3tools/client-runtime/connection";
-import type { SpeechTranscriptionOptions, SpeechStreamText } from "@t3tools/contracts";
+import type {
+  SpeechTranscriptionOptions,
+  SpeechStreamText,
+  EnvironmentSpeechStatus,
+} from "@t3tools/contracts";
 import type { CloudSpeechModelId, CloudSpeechProvider } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
@@ -32,6 +36,7 @@ export function createBrowserVoiceInputPlatform(input: {
   readonly cloudModel?: CloudSpeechModelId | undefined;
   readonly hasAudioConsent: () => boolean;
   readonly getTranscriptionOptions: () => SpeechTranscriptionOptions;
+  readonly getStatusListener?: () => ((status: EnvironmentSpeechStatus) => void) | undefined;
   readonly getStreamingEnabled: () => boolean;
   readonly getMicrophoneId: () => string | Promise<string>;
   readonly onLevel: (level: number) => void;
@@ -39,12 +44,13 @@ export function createBrowserVoiceInputPlatform(input: {
   readonly onText: (text: SpeechStreamText) => void;
   readonly onError: (message: string, code?: VoiceInputErrorCode) => void;
 }) {
-  return createBrowserPcmCapture(input, async (options) => {
+  return createBrowserPcmCapture(input, async (options, canStream) => {
     if (input.hosted)
       return {
         locale: "auto",
         transcribe: (uri, { signal }) => transcribeBaskulePcm(uri, signal, input.hasAudioConsent),
       };
+    const onStatus = input.getStatusListener?.();
     const recordingOptions = input.getTranscriptionOptions();
     const streamingEnabled = input.getStreamingEnabled();
     const transcribeRecording = async (
@@ -102,8 +108,15 @@ export function createBrowserVoiceInputPlatform(input: {
     }
     const status = await runEnvironmentSpeech(getEnvironmentSpeechStatus(input.prepared), options);
     throwIfVoiceTranscriptionAborted(options.signal);
+    onStatus?.(status);
+    throwIfVoiceTranscriptionAborted(options.signal);
     if (!status.supported)
       throw new VoiceTranscriptionError({ code: "unavailable", message: status.reason });
+    if (status.state === "missing-model")
+      throw new VoiceTranscriptionError({
+        code: "unavailable",
+        message: m(msg("Could not start voice input")),
+      });
     const language = status.languages
       ? effectiveSpeechLanguage(
           {
@@ -114,16 +127,19 @@ export function createBrowserVoiceInputPlatform(input: {
         )
       : "auto";
     const nativeStreaming = status.supportsStreaming && streamingEnabled;
-    const locale =
-      !nativeStreaming && status.supportsTranslation && recordingOptions.speechTranslateToEnglish
-        ? "en"
-        : language;
-    if (status.supportsStreaming ? !nativeStreaming : !status.supportsBufferedStreaming) {
-      return { locale, transcribe: transcribeRecording };
+    const batchLocale =
+      status.supportsTranslation && recordingOptions.speechTranslateToEnglish ? "en" : language;
+    const batch = { locale: batchLocale, transcribe: transcribeRecording };
+    if (
+      !canStream() ||
+      (status.supportsStreaming ? !nativeStreaming : !status.supportsBufferedStreaming)
+    ) {
+      return batch;
     }
     const url = await runEnvironmentSpeech(getEnvironmentSpeechStreamUrl(input.prepared), options);
+    if (!canStream()) return batch;
     return {
-      locale,
+      locale: nativeStreaming ? language : batchLocale,
       transcribe: transcribeRecording,
       streaming: openSpeechStream({
         url,

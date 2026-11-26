@@ -21,6 +21,7 @@ import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
 import { GuestShareDialogHost } from "../components/chat/GuestShareControls";
 import { AddProjectToMachineDialogHost } from "../components/AddProjectToMachineDialog";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
+import { WorktreeLayoutApprovalDialogHost } from "../components/WorktreeLayoutApprovalDialogHost";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
 import { baskule } from "../baskule/flags";
 import { baskuleBeforeLoad, BaskuleRootChrome, isBaskuleBareRoute } from "../baskule/root";
@@ -208,6 +209,7 @@ function RootRouteBranch() {
       <SnapShotCoordinator />
       <ReopenClosedViewShortcut />
       <ConfirmDialogHost />
+      <WorktreeLayoutApprovalDialogHost />
       <CustomSnoozeDialogHost />
       <GuestShareDialogHost />
       <ProjectCloneToastCoordinator />

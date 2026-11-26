@@ -1,13 +1,18 @@
 // @effect-diagnostics globalFetch:off -- Local CLI HTTP transport uses the platform fetch implementation.
 import { discardResponseBody, responsePayloads } from "@t3tools/shared/mcpResponsePayloads";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
+const JsonRpcError = Schema.Struct({ code: Schema.Number, message: Schema.String });
+const decodeRpcError = Schema.decodeUnknownOption(JsonRpcError);
+
 class McpToolSessionError extends Schema.TaggedError<McpToolSessionError>()("McpToolSessionError", {
   message: Schema.String,
   cause: Schema.optional(Schema.Defect()),
+  rpcError: Schema.optional(JsonRpcError),
 }) {}
 
 const isMcpToolSessionError = Schema.is(McpToolSessionError);
@@ -117,7 +122,13 @@ export const mcpToolSession = (
         envelope?.error === undefined
           ? "."
           : `: ${yield* encodeRpcMessage(envelope.error).pipe(Effect.mapError(bridgeError))}`;
-      return yield* new McpToolSessionError({ message: `T3 Code MCP ${method} failed${detail}` });
+      return yield* new McpToolSessionError({
+        message: `T3 Code MCP ${method} failed${detail}`,
+        ...Option.match(decodeRpcError(envelope?.error), {
+          onNone: () => ({}),
+          onSome: (rpcError) => ({ rpcError }),
+        }),
+      });
     }
     return envelope;
   });

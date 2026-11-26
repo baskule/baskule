@@ -16,6 +16,8 @@ import {
   getThreadAutoSettlementSearchAvailability,
 } from "./settingsSearch";
 
+/** Any environment whose server enables secret providers; gates the Secrets page, nav and search. */
+
 export function useAvailableSettingsSearchItems() {
   const { environments } = useEnvironments();
   // Explicit booleans keep flags out of the filter cache so environment updates do not rebuild the list.
@@ -41,6 +43,7 @@ export function useAvailableSettingsSearchItems() {
         environment.serverConfig !== null &&
         environment.serverConfig.managedPolicy?.limits?.providers?.allowedDrivers === undefined,
     ) === true;
+  const hasSecretProvidersEnvironment = false;
   const hasThreadAutoSettlement =
     getThreadAutoSettlementSearchAvailability(environments).eligibleEnvironmentIds.length > 0;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -72,5 +75,6 @@ export function useAvailableSettingsSearchItems() {
     hasFastWorktreeCheckoutEnvironment,
     hasTextGeneratorsEnvironment,
     hasPrimaryEnvironment: primaryEnvironmentId !== null,
+    hasSecretProvidersEnvironment,
   });
 }

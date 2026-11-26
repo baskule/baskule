@@ -11,6 +11,14 @@ function nextStatusAfterDownloadFailure(
   return currentState.availableVersion ? "available" : "error";
 }
 
+// A mismatch describes only the check that found it.
+function withoutTrackMismatch({
+  trackMismatch: _trackMismatch,
+  ...state
+}: DesktopUpdateState): DesktopUpdateState {
+  return state;
+}
+
 function getCanRetryAfterDownloadFailure(currentState: DesktopUpdateState): boolean {
   return currentState.availableVersion !== null;
 }
@@ -47,7 +55,7 @@ export function reduceDesktopUpdateStateOnCheckStart(
 ): DesktopUpdateState {
   const hasDownloadedUpdate = state.downloadedVersion !== null;
   return {
-    ...state,
+    ...withoutTrackMismatch(state),
     status: "checking",
     checkedAt,
     releaseNotes: hasDownloadedUpdate ? state.releaseNotes : [],
@@ -63,10 +71,11 @@ export function reduceDesktopUpdateStateOnCheckFailure(
   state: DesktopUpdateState,
   message: string,
   checkedAt: string,
+  trackMismatch?: DesktopUpdateState["trackMismatch"],
 ): DesktopUpdateState {
   if (state.downloadedVersion !== null) {
     return {
-      ...state,
+      ...withoutTrackMismatch(state),
       status: "downloaded",
       message: null,
       checkedAt,
@@ -77,13 +86,14 @@ export function reduceDesktopUpdateStateOnCheckFailure(
   }
 
   return {
-    ...state,
+    ...withoutTrackMismatch(state),
     status: "error",
     message,
     checkedAt,
     downloadPercent: null,
     errorContext: "check",
     canRetry: true,
+    ...(trackMismatch === undefined ? {} : { trackMismatch }),
   };
 }
 
@@ -97,7 +107,7 @@ export function reduceDesktopUpdateStateOnUpdateAvailable(
   const isDownloadedVersion = state.downloadedVersion === version;
   const preserveReleaseNotes = isDownloadedVersion && releaseNotes.length === 0;
   return {
-    ...state,
+    ...withoutTrackMismatch(state),
     status: isDownloadedVersion ? "downloaded" : "available",
     availableVersion: version,
     downloadedVersion: isDownloadedVersion ? version : null,
@@ -117,7 +127,7 @@ export function reduceDesktopUpdateStateOnNoUpdate(
 ): DesktopUpdateState {
   if (state.downloadedVersion !== null) {
     return {
-      ...state,
+      ...withoutTrackMismatch(state),
       status: "downloaded",
       availableVersion: state.downloadedVersion,
       downloadPercent: 100,
@@ -129,7 +139,7 @@ export function reduceDesktopUpdateStateOnNoUpdate(
   }
 
   return {
-    ...state,
+    ...withoutTrackMismatch(state),
     status: "up-to-date",
     availableVersion: null,
     downloadedVersion: null,
@@ -147,7 +157,7 @@ export function reduceDesktopUpdateStateOnDownloadStart(
   state: DesktopUpdateState,
 ): DesktopUpdateState {
   return {
-    ...state,
+    ...withoutTrackMismatch(state),
     status: "downloading",
     downloadPercent: 0,
     message: null,
@@ -161,7 +171,7 @@ export function reduceDesktopUpdateStateOnDownloadFailure(
   message: string,
 ): DesktopUpdateState {
   return {
-    ...state,
+    ...withoutTrackMismatch(state),
     status: nextStatusAfterDownloadFailure(state),
     message,
     downloadPercent: null,
@@ -175,7 +185,7 @@ export function reduceDesktopUpdateStateOnDownloadProgress(
   percent: number,
 ): DesktopUpdateState {
   return {
-    ...state,
+    ...withoutTrackMismatch(state),
     status: "downloading",
     downloadPercent: percent,
     message: null,
@@ -189,7 +199,7 @@ export function reduceDesktopUpdateStateOnDownloadComplete(
   version: string,
 ): DesktopUpdateState {
   return {
-    ...state,
+    ...withoutTrackMismatch(state),
     status: "downloaded",
     availableVersion: version,
     downloadedVersion: version,
@@ -200,12 +210,28 @@ export function reduceDesktopUpdateStateOnDownloadComplete(
   };
 }
 
+export function reduceDesktopUpdateStateOnDownloadLost(
+  state: DesktopUpdateState,
+): DesktopUpdateState {
+  if (state.downloadedVersion === null) return state;
+  return {
+    ...withoutTrackMismatch(state),
+    status: "available",
+    availableVersion: state.downloadedVersion,
+    downloadedVersion: null,
+    downloadPercent: null,
+    message: null,
+    errorContext: null,
+    canRetry: false,
+  };
+}
+
 export function reduceDesktopUpdateStateOnInstallFailure(
   state: DesktopUpdateState,
   message: string,
 ): DesktopUpdateState {
   return {
-    ...state,
+    ...withoutTrackMismatch(state),
     status: "downloaded",
     message,
     errorContext: "install",

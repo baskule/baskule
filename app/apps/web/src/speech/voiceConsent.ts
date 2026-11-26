@@ -13,7 +13,9 @@ import {
 // Separate keys: a stale window saving ordinary preferences must not restore either grant.
 const AUDIO_KEY = "t3code:voice-audio-grant:v1";
 const CLEANUP_KEY = "t3code:voice-cleanup-grant:v1";
-const Grant = Schema.Struct({ id: Schema.String, destination: VoiceTranscriptionDestination });
+const AudioDestination = VoiceTranscriptionDestination;
+export type AudioDestination = typeof AudioDestination.Type;
+const Grant = Schema.Struct({ id: Schema.String, destination: AudioDestination });
 const AudioGrant = Schema.NullOr(Grant);
 const sameGrant = Schema.toEquivalence(AudioGrant);
 const SavedChoice = Schema.Union([AudioGrant, Schema.Literal("off")]);
@@ -62,7 +64,7 @@ function replaceChoice(choice: AudioChoice, previous = readChoice()) {
     window.localStorage.removeItem(savedKey(old.id));
 }
 
-export function chooseAudioDestination(destination: VoiceTranscriptionDestination | null) {
+export function chooseAudioDestination(destination: AudioDestination | null) {
   replaceChoice(destination ? { id: randomUUID(), destination } : "off");
 }
 

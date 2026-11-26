@@ -1,10 +1,9 @@
 import { m as resolveMessage } from "../i18n/messages";
 import { msg } from "gt-react";
 
-
 import type { DesktopBridge } from "@t3tools/contracts";
 
-import { getDesktopUpdateActionError } from "./desktopUpdate.logic";
+import { getDesktopUpdateActionError, installDesktopUpdate } from "./desktopUpdate.logic";
 import { showDesktopUpdateDownloadedToast } from "./desktopUpdate.toast";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 
@@ -15,7 +14,9 @@ const toastUpdateError: ReportLocalUpdateError = (title, description) => {
 };
 
 function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : resolveMessage(msg("An unexpected error occurred."));
+  return error instanceof Error
+    ? error.message
+    : resolveMessage(msg("An unexpected error occurred."));
 }
 
 export async function checkLocalUpdate(
@@ -66,7 +67,10 @@ export async function downloadLocalUpdate(
       showDesktopUpdateDownloadedToast(bridge, result.state);
     }
     if (!result.accepted && reportRefused) {
-      reportError(resolveMessage(msg("Could not download update")), resolveMessage(msg("The download did not start. Try again.")));
+      reportError(
+        resolveMessage(msg("Could not download update")),
+        resolveMessage(msg("The download did not start. Try again.")),
+      );
     }
     const actionError = getDesktopUpdateActionError(result);
     if (actionError) reportError(resolveMessage(msg("Could not download update")), actionError);
@@ -86,7 +90,7 @@ export async function installLocalUpdate(
   }: { readonly reportError?: ReportLocalUpdateError; readonly reportRefused?: boolean } = {},
 ): Promise<boolean> {
   try {
-    const result = await bridge.installUpdate();
+    const result = await installDesktopUpdate(bridge);
     if (!result.accepted) {
       if (reportRefused) {
         reportError(

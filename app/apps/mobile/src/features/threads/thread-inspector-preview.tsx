@@ -1,11 +1,8 @@
 import { useIsFocused, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { useGT } from "gt-react-native";
 import { type ReactNode } from "react";
 import { View } from "react-native";
 
-import { AppBar } from "../../components/ui/AppBar";
-import { SheetHeader } from "../../components/ui/SheetHeader";
 import { DevicePreviewScreen } from "../devices/DevicePreviewRouteScreen";
 import {
   WorkspaceContentWidthContext,
@@ -15,41 +12,8 @@ import {
   ThreadInspectorNavigationContext,
   type ThreadInspectorTarget,
 } from "./thread-inspector-navigation";
+import type { ThreadInspectorPresentation } from "./thread-inspector-header";
 import { ThreadPreviewRoute } from "./thread-preview-route";
-
-/** A thread shown outside its route: in the inspector pane, or presented full screen with a close. */
-export type ThreadInspectorPresentation =
-  | { readonly onMaximize: () => void }
-  | { readonly onClose: () => void };
-
-export function ThreadInspectorHeader(
-  props: ThreadInspectorPresentation & { readonly title: string; readonly subtitle?: string },
-) {
-  const gt = useGT();
-  if ("onMaximize" in props) {
-    return (
-      <AppBar
-        title={props.title}
-        subtitle={props.subtitle}
-        actions={[
-          {
-            accessibilityLabel: gt("Maximize thread"),
-            icon: "arrow.up.left.and.arrow.down.right",
-            onPress: props.onMaximize,
-          },
-        ]}
-      />
-    );
-  }
-  return (
-    <SheetHeader
-      title={props.title}
-      subtitle={props.subtitle}
-      onClose={props.onClose}
-      accessibilityLabel={gt("Close thread")}
-    />
-  );
-}
 
 /** A thread shown beside or over the workspace does not take the workspace's content width. */
 export function InspectorContentScope({ children }: { readonly children: ReactNode }) {
@@ -118,3 +82,5 @@ export function ThreadInspectorPreview(props: {
     </ThreadInspectorNavigationContext>
   );
 }
+
+/** A linked environment's read-only thread in the inspector; Maximize gives it the whole screen. */

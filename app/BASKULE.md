@@ -5,7 +5,7 @@ Keep `LICENSE` and third-party notices. [Source provenance](../source-provenance
 records the upstream source and licenses. The root [build guide](../docs/building.md)
 and [development workflow](../docs/development-workflow.md) cover the complete repository.
 
-Upstream base: T3 Code `v0.1.11` (`59651c1761f6c63e9b6056839067066968e6a406`).
+Upstream base: T3 Code `v0.1.12` (`ca81b7b97a1c4b91e5ac25768d0f6629f37732fd`).
 Update this line with each upstream update.
 
 ## Build and run
@@ -83,9 +83,9 @@ and revoke streams and acquired files when the account or space changes.
 
 Baskule excludes linked environments and remote delegation, issue triage, port scanning,
 developer-server discovery, the remote browser tunnel, port forwarding, Simlock pool integration, forge PR workflows, publishing
-and review UI, GitHub app sign-in, external secret-provider packages, and T3 commercial
-plans and fleet channel switching. Upstream standalone dev-stack scenarios are excluded because
-Baskule verifies its hosted stack with the root fake-model journeys. Baskule ships its own
+and review UI, GitHub app sign-in, external secret-provider packages, beta workflows, external
+MCP event feeds, agent feedback, and T3 commercial plans and fleet channel switching. Baskule
+verifies its hosted stack with the root fake-model journeys. Baskule ships its own
 site and release jobs. Stored metadata, redaction and supported migrations remain compatible
 with released data. Generic native connection and pairing contracts remain available.
 Peer-link issuance and MCP link-origin fences apply only to upstream linked environments.
@@ -117,7 +117,7 @@ survives revocation so a client cannot lock every device out. Browser-session an
 bootstrap endpoints accept arbitrary credentials in this mode. Other auth-mode values
 retain their normal authentication behavior.
 
-Telemetry defaults off when `BASKULE=1` or `BASKULE_AUTH_MODE` is set.
+Telemetry defaults off in CI and when `BASKULE=1` or `BASKULE_AUTH_MODE` is set.
 `T3CODE_TELEMETRY_ENABLED` overrides that default. Set it to `false` in deployments to
 also disable relay tracing, which reads that variable directly.
 
@@ -166,7 +166,7 @@ and record from the browser's default microphone because no Baskule web build ca
 show no voice settings route, search result, setup dialog or settings action. Mobile deletes
 upstream's `t3-voice-transcription` native module and uses the same route; **Settings → Voice**
 remains for microphone access and the preferred-microphone order its recorder applies.
-Saved speech settings still decode; no client calls the server's upstream speech endpoints.
+Saved speech settings still decode. The Apple Speech helper and native IPC are omitted.
 
 General Translation resolves client copy from checked-in catalogs. The browser and desktop
 renderer migrate the released language cookie or local storage value into client settings.
@@ -176,7 +176,7 @@ at build time. See the [localization guide](../docs/localization.md).
 
 Missing tool-visibility preferences default to `hideAll` through the upstream preference model.
 Every explicit saved choice is preserved. Dictation uses upstream's current snapshot and insertion
-model; obsolete per-draft revision tracking is removed.
+model, including submitting a finished recording to its original draft after navigation.
 
 The embedded build adapts OpenCode 2.2.5’s Code Mode queue so completed host tools are not starved
 by polling jobs. Native goal controls refresh their state before settling because a command can
@@ -187,6 +187,9 @@ Model-facing sender notes name Baskule in prompts from agents, MCP clients, and 
 The OpenCode adapter can reconnect its event subscription as soon as the disposed runtime closes
 the stream. The SpaceCell disposal test checks that every stream open before disposal is closed
 by comparing stream IDs. A replacement subscription can appear on the new runtime.
+Hosted OpenCode uses the installation's catalog in every location. Catalog refreshes keep their
+one-shot reads and wait for a workspace scan when requested. The hosted driver skips upstream's
+persistent background catalog and location-scan subscriptions.
 
 OpenCode compacts automatically. Set each model's real context limit in **Admin > AI > Models**.
 There is no manual `/compact` action or idle compaction worker.
@@ -194,7 +197,7 @@ There is no manual `/compact` action or idle compaction worker.
 ## Take a new upstream release
 
 Follow [Upgrade the T3 Code base](../docs/upstream-upgrades.md).
-The current [integration review](../docs/upstream-v0.1.11-integration.md) records the release
+The current [integration review](../docs/upstream-v0.1.12-integration.md) records the release
 decisions and verification boundary.
 Start from the complete new stable upstream release and selectively reapply the
 Baskule behavior still needed from the latest `origin/main`. Adapt retained changes
@@ -223,8 +226,9 @@ Revalidate these customizations when T3, Effect or embedded OpenCode changes:
   ProviderRegistry, EnvironmentTheme, and OAuth signing use it; lifetime services remain eager.
 - It drops the synchronous process-exit log flush and its Node filesystem import from
   `packages/shared/src/observability.ts`. Spaces use the injected filesystem for asynchronous flush and close.
-- `sharedHttpCodecs.mjs` rewrites Effect 4.1.3's `dist/http-api/HttpApiBuilder.js` at
+- `sharedHttpCodecs.mjs` rewrites Effect 4.1.5's `dist/http-api/HttpApiBuilder.js` at
   `handlerToHttpEffect` and its middleware/error boundaries. Only schema factories are shared.
+  Request redaction stays in the upstream request handler.
   The reviewed factory body, declarations, and file match are guarded; inspect the complete lifted
   body before updating its fingerprint. Request contexts and handlers remain per Space.
 - Direct `baskule:` edits in `serverActivation.ts` park scoped children without a parent handshake.
@@ -240,14 +244,22 @@ journey after changes. The startup/retention design is tracked in
 
 ### Migration boundary
 
-The application migration head is **102**. The Baskule manifest skips retired Codex index 065,
-peer-only IDs 070–072, and 097, which belongs to the excluded issue trackers. Preserve those
-omissions and all recorded identifiers. Migrations 098–102 index active chat, recovery, and
-turn data and maintain per-chat item totals over the existing projection tables.
-The upstream preflight uses the Baskule manifest so it does not demand retired migrations.
-Inspect new upstream migrations for peer tables, fences, indexes and migration-head assumptions.
-Do not add empty migrations for excluded layouts. Preserve supported migration code and follow
-`packages/contracts/release-compatibility.json` when removing compatibility paths.
+The application migration head is **116**. The manifest skips 065 (Codex), 070–072
+(linked environments), 097, 103 and 109 (issue trackers), 108 (agent feedback),
+and 110, 113–115 and 117 (workflows). Preserve recorded IDs and omissions.
+A future implementation of an excluded feature must add any required schema
+above the then-current head. The migrator skips lower IDs even when absent from
+the ledger. Do not add empty migrations or reuse a recorded ID.
+
+Migrations 104–107, 111, 112 and 116 add project and task-folder metadata,
+indexes for turn and history reads, worktree layout approval storage, and fork
+history membership. The hosted policy limits project mutation to pin and archive.
+The client and server compatibility floor remains 0.5.4.
+
+The retention worker physically purges previously deleted chats on its normal
+maintenance schedule. Take an installation backup before upgrading. The backup
+preserves the previous layout and any deleted chat data that had yet to be
+purged.
 
 Schema and data-layout changes need forward migrations for released installations. Changes that
 cannot migrate need maintainer approval and documented deployment steps. Operations on an existing

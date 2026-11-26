@@ -41,6 +41,12 @@ describe("Baskule RPC policy", () => {
     for (const tool of BASKULE_ALLOWED_MCP_TOOLS) expect(declared.has(tool), tool).toBe(true);
   });
 
+  it("lets an agent asked for a structured result submit it", () => {
+    expect(BASKULE_ALLOWED_MCP_TOOLS.has("t3_thread_launch")).toBe(true);
+    expect(BASKULE_ALLOWED_MCP_TOOLS.has("t3_submit_output")).toBe(true);
+    expect(BASKULE_ALLOWED_MCP_TOOLS.has("t3_workflow_stop")).toBe(false);
+  });
+
   it("refuses host features and unselected commands", () => {
     for (const method of [
       WS_METHODS.terminalOpen,

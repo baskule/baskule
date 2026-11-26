@@ -2,6 +2,7 @@ import { SecretRequestError } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  secretRequestAnswerInput,
   secretRequestDisplay,
   secretRequestFailureMessage,
   secretRequestLink,
@@ -17,6 +18,46 @@ describe("secretRequestDisplay", () => {
     expect(secretRequestDisplay({ secretStatus: "saved" }, "inherited")).toMatchObject({
       outcome: "saved",
     });
+  });
+});
+
+describe("secretRequestAnswerInput", () => {
+  const single = { id: "item", threadId: "thread", label: "Token" } as const;
+  const login = {
+    ...single,
+    delivery: "file",
+    fields: [
+      { name: "email", label: "Email", secret: false },
+      { name: "password", label: "Password" },
+    ],
+  } as const;
+  const ids = { threadId: "thread", turnItemId: "item" };
+
+  it("answers a single request with its trimmed secret", () => {
+    expect(
+      secretRequestAnswerInput(single as never, { type: "save", values: { "": " t " } }),
+    ).toEqual({ ...ids, answer: { type: "save", secret: "t" } });
+    expect(secretRequestAnswerInput(single as never, { type: "save", values: { "": " " } })).toBe(
+      null,
+    );
+  });
+
+  it("answers a fields request only once every field has a value, keyed by name", () => {
+    expect(
+      secretRequestAnswerInput(login as never, {
+        type: "save",
+        values: { email: "a@acme.dev ", password: "pw" },
+      }),
+    ).toEqual({
+      ...ids,
+      answer: { type: "save", values: { email: "a@acme.dev", password: "pw" } },
+    });
+    expect(
+      secretRequestAnswerInput(login as never, { type: "save", values: { email: "a@acme.dev" } }),
+    ).toBe(null);
+    // An unset field named like an Object.prototype member is empty, not that member.
+    const named = { ...single, fields: [{ name: "constructor", label: "Key" }] } as const;
+    expect(secretRequestAnswerInput(named as never, { type: "save", values: {} })).toBe(null);
   });
 });
 

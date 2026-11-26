@@ -1,5 +1,5 @@
 import { useGT } from "gt-react";
-import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+import { SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -18,7 +18,6 @@ import { BaskuleSidebarHeader } from "../../baskule/BaskuleSidebarHeader"; // ba
 export interface SidebarThreadHeaderProps {
   hasProjects: boolean;
   projectScope: ReactNode;
-  onNewProject: () => void;
   onNewThread: (event: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
   newThreadShortcutLabel: string | null | undefined;
@@ -46,7 +45,6 @@ export function SidebarThreadHeader(props: SidebarThreadHeaderProps) {
 function UpstreamSidebarThreadHeader({
   hasProjects,
   projectScope,
-  onNewProject,
   onNewThread,
   newThreadDisabled,
   newThreadShortcutLabel,
@@ -110,14 +108,7 @@ function UpstreamSidebarThreadHeader({
         ) : null}
       </div>
       <div className="flex shrink-0 items-center">
-        {hasProjects ? (
-          <>
-            {projectScope}
-            <SidebarHeaderIconButton label={gt("Add project")} onClick={onNewProject}>
-              <FolderPlusIcon />
-            </SidebarHeaderIconButton>
-          </>
-        ) : null}
+        {hasProjects ? projectScope : null}
         <SidebarHeaderIconButton
           label={gt("New thread")}
           tooltip={

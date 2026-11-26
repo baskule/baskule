@@ -5,18 +5,47 @@
 // index.ts mcpRoute). Connecting OpenCode straight to it costs an MCP handshake over the space bridge (initialize,
 // tools/list, … to the SpaceCell) on every new chat, and the first model step must wait for it. The tool list is the
 // same for every chat of a space (T3 registers the tools its policy allows, rpcPolicy.ts), so this proxy answers
-// initialize and the list methods from a cache (memory, then DO storage), and opens the upstream MCP session lazily,
-// on the first call that needs T3 (a tool call, a resource read). That first upstream handshake also refreshes the
-// cache, so a T3 upgrade reaches the next chats. Without a cache (the space's first chat ever) it goes upstream.
+// initialize and the list methods from a cache persisted for the bundled T3 build. A cold cache or a different
+// build requires an upstream handshake before the first chat gets its tools. With a valid cache the upstream MCP
+// session opens lazily on the first call that needs T3 (a tool call, a resource read) and refreshes the cache.
 type Handler = (req: Request) => Promise<Response>;
 type Json = Record<string, any>;
 
 /** The list results cached per space, by method (params-less calls only). */
 const CACHED = new Set(["initialize", "tools/list", "resources/list", "resources/templates/list", "prompts/list"]);
+const CACHE_KEY = "baskule:t3-mcp-cache";
+declare const __BASKULE_T3_BUILD__: string | undefined;
+
+type StoredCache = { build: string; results: Json };
 
 export interface T3McpCache {
   get(): Json | undefined;
   set(value: Json): void;
+}
+
+export function persistedT3McpCache(
+  storage: {
+    get(key: string): Promise<unknown>;
+    put(key: string, value: StoredCache): Promise<void>;
+  },
+  build = typeof __BASKULE_T3_BUILD__ === "undefined" ? undefined : __BASKULE_T3_BUILD__,
+) {
+  let results: Json | undefined;
+  return {
+    async load() {
+      if (build === undefined) return;
+      const stored = await storage.get(CACHE_KEY);
+      if (stored && typeof stored === "object" && "build" in stored && stored.build === build &&
+          "results" in stored && stored.results && typeof stored.results === "object") {
+        results = stored.results;
+      }
+    },
+    get: () => results,
+    set(value: Json) {
+      results = value;
+      if (build !== undefined) void storage.put(CACHE_KEY, { build, results } satisfies StoredCache);
+    },
+  };
 }
 
 const json = (body: unknown, headers: Record<string, string> = {}) =>

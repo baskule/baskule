@@ -2,6 +2,7 @@ import { EnvironmentHttpApi } from "@t3tools/contracts";
 import * as ByteSize from "effect/ByteSize";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Result from "effect/Result";
 import * as Tracer from "effect/Tracer";
 import * as HttpIncomingMessage from "effect/http/HttpIncomingMessage";
 import type * as HttpServerRequest from "effect/http/HttpServerRequest";
@@ -80,7 +81,10 @@ export const layer = HttpApiBuilder.group(
 
       const headers: Record<string, string> = {};
       for (const [name, value] of Object.entries(request.headers)) {
-        if (typeof value === "string") headers[name.toLowerCase()] = value;
+        // Webhook senders do not use cookies, so the request a task reads carries none.
+        if (typeof value === "string" && name.toLowerCase() !== "cookie") {
+          headers[name.toLowerCase()] = value;
+        }
       }
       const queryIndex = request.url.indexOf("?");
       // The relay's delivery id and receive time count only with its signed

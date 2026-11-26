@@ -19,8 +19,9 @@ import * as Stream from "effect/Stream";
 import type * as Types from "effect/Types";
 import { BASKULE_MCP_ICON } from "./baskuleIcon.ts";
 import { AiError, McpProtocol, McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
+import { HttpBody, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import {
+  AuthSessionId,
   DeviceToolError,
   OrchestratorMcpFailure,
   PreviewAutomationError,
@@ -30,6 +31,7 @@ import {
 
 import packageJson from "../../package.json" with { type: "json" };
 import { parseBearerToken } from "../auth/EnvironmentAuth.ts";
+import * as SessionStore from "../auth/SessionStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as DeviceService from "../device/DeviceService.ts";
 import * as HtmlRender from "../htmlRender/HtmlRender.ts";
@@ -50,6 +52,9 @@ import { advertisedJsonSchema } from "./advertisedJsonSchema.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import * as McpToolExposure from "./McpToolExposure.ts";
+import { HTML_RENDER_TOOL_NAME } from "@t3tools/shared/htmlRender";
+import { compactT3McpToolOutput } from "@t3tools/shared/toolOutput";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { MCP_TOOL_EXPOSURE_HEADER } from "@t3tools/provider-core/server/mcpSession";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
@@ -207,6 +212,30 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
   const deferredRegistrations = yield* Effect.serviceOption(McpDeferredRegistrations);
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const runtimeModeCeiling = serverSettings.managedPolicy?.limits?.maxRuntimeMode;
+  const sessions = yield* Effect.serviceOption(SessionStore.SessionStore);
+  // Auth runs once per request, so a response that streams on ends when the outside client's
+  // session is revoked or expires. `events/stream` ends itself first with
+  // `notifications/events/terminated`, which cutting the body here would lose.
+  const endWithSession = (
+    response: HttpServerResponse.HttpServerResponse,
+    request: HttpServerRequest.HttpServerRequest,
+    client: McpInvocationContext.McpClientCaller | undefined,
+  ) => {
+    const body = response.body;
+    if (client === undefined || Option.isNone(sessions) || body._tag !== "Stream") return response;
+    if (request.headers["mcp-method"] === "events/stream") return response;
+    const invalidated = sessions.value
+      .awaitInvalidation(AuthSessionId.make(client.sessionId))
+      .pipe(Effect.ignore);
+    return HttpServerResponse.setBody(
+      response,
+      HttpBody.stream(
+        Stream.interruptWhen(body.stream, invalidated),
+        body.contentType,
+        body.contentLength,
+      ),
+    );
+  };
   const authenticateRequest = Effect.fn("McpHttpServer.authenticateRequest")(function* (
     request: HttpServerRequest.HttpServerRequest,
   ) {
@@ -234,7 +263,9 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
         offerOAuth: Option.isSome(clients) && !looksLikeProviderToken(token),
       });
     }
-    return McpInvocationContext.withRuntimeModeCeiling(invocation, runtimeModeCeiling);
+    const limited = McpInvocationContext.withRuntimeModeCeiling(invocation, runtimeModeCeiling);
+    const origin = Option.getOrUndefined(Option.map(requestUrl(request), (url) => url.origin));
+    return { ...limited, origin };
   });
   return Effect.fnUntraced(function* (httpEffect) {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -247,6 +278,7 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
     return yield* httpEffect.pipe(
       Effect.provideService(McpInvocationContext.McpInvocationContext, admitted),
       Effect.map(normalizeMcpHttpResponse),
+      Effect.map((response) => endWithSession(response, request, admitted.client)),
     );
   }) satisfies McpAuthMiddleware;
 }).pipe(Effect.withSpan("McpHttpServer.makeAuthMiddleware"));
@@ -260,7 +292,6 @@ export const MAX_SNAPSHOT_TEXT_BYTES = 20_000;
 const MAX_SNAPSHOT_VISIBLE_TEXT_CHARS = 8_000;
 // Page text and the ARIA tree both shrink to this before either drops below it.
 const SNAPSHOT_TEXT_FLOOR_CHARS = 2_000;
-const MAX_SNAPSHOT_ELEMENT_NAME_CHARS = 200;
 const MAX_SNAPSHOT_LOG_ENTRIES = 40;
 const MAX_SNAPSHOT_LOG_TEXT_CHARS = 500;
 const MAX_SNAPSHOT_IDENTIFIER_CHARS = 2_048;
@@ -293,10 +324,6 @@ type SnapshotMetadata = {
   readonly url: string;
   readonly title: string;
   readonly visibleText: string;
-  readonly interactiveElements: ReadonlyArray<{
-    readonly name: string;
-    readonly [key: string]: unknown;
-  }>;
   readonly consoleEntries: ReadonlyArray<unknown>;
   readonly networkEntries: ReadonlyArray<unknown>;
   readonly actionTimeline: ReadonlyArray<unknown>;
@@ -313,7 +340,7 @@ const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
   const { accessibilityTree, ...withoutTree } = metadata;
   const ariaTree = typeof accessibilityTree === "string" ? accessibilityTree : undefined;
   if (accessibilityTree !== undefined && ariaTree === undefined) {
-    omitted.push("accessibilityTree (use interactiveElements locators or preview_evaluate)");
+    omitted.push("accessibilityTree (use preview_evaluate)");
   }
   const tail = <A>(entries: ReadonlyArray<A>, label: string) => {
     if (entries.length > MAX_SNAPSHOT_LOG_ENTRIES) {
@@ -331,41 +358,23 @@ const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
   ) {
     omitted.push(`url or title after ${MAX_SNAPSHOT_IDENTIFIER_CHARS} characters`);
   }
-  if (
-    metadata.interactiveElements.some(
-      (element) => element.name.length > MAX_SNAPSHOT_ELEMENT_NAME_CHARS,
-    )
-  ) {
-    omitted.push(`element names longer than ${MAX_SNAPSHOT_ELEMENT_NAME_CHARS} characters`);
-  }
   const bounded = {
     ...withoutTree,
     url: cutText(metadata.url, MAX_SNAPSHOT_IDENTIFIER_CHARS),
     title: cutText(metadata.title, MAX_SNAPSHOT_IDENTIFIER_CHARS),
-    interactiveElements: metadata.interactiveElements.map((element) => ({
-      ...element,
-      name: cutText(element.name, MAX_SNAPSHOT_ELEMENT_NAME_CHARS),
-    })),
     consoleEntries: tail(metadata.consoleEntries, "console entries"),
     networkEntries: tail(metadata.networkEntries, "network entries"),
     actionTimeline: tail(metadata.actionTimeline, "action timeline entries"),
   };
 
   // Per-field character caps can still exceed the total byte ceiling.
-  const shedOrder = [
-    "actionTimeline",
-    "networkEntries",
-    "consoleEntries",
-    "interactiveElements",
-  ] as const;
+  const shedOrder = ["actionTimeline", "networkEntries", "consoleEntries"] as const;
   const lists: Record<(typeof shedOrder)[number], ReadonlyArray<unknown>> = {
-    interactiveElements: bounded.interactiveElements,
     consoleEntries: bounded.consoleEntries,
     networkEntries: bounded.networkEntries,
     actionTimeline: bounded.actionTimeline,
   };
   const dropped: Record<(typeof shedOrder)[number], number> = {
-    interactiveElements: 0,
     consoleEntries: 0,
     networkEntries: 0,
     actionTimeline: 0,
@@ -380,22 +389,18 @@ const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
   });
   let text = encodeJsonText(value());
   while (utf8Length(text) > MAX_SNAPSHOT_TEXT_BYTES) {
-    // Logs shed first, oldest first. Below the floors, locator-bearing elements and tree go last.
+    // Logs shed first, oldest first. Below the floors, the locator-bearing tree goes last.
     const key =
-      shedOrder.find(
-        (candidate) => candidate !== "interactiveElements" && lists[candidate].length > 0,
-      ) ??
+      shedOrder.find((candidate) => lists[candidate].length > 0) ??
       (visibleTextChars > SNAPSHOT_TEXT_FLOOR_CHARS
         ? "visibleText"
         : ariaTreeChars > SNAPSHOT_TEXT_FLOOR_CHARS
           ? "accessibilityTree"
           : visibleTextChars > 0
             ? "visibleText"
-            : lists.interactiveElements.length > 0
-              ? "interactiveElements"
-              : ariaTreeChars > 0
-                ? "accessibilityTree"
-                : undefined);
+            : ariaTreeChars > 0
+              ? "accessibilityTree"
+              : undefined);
     if (key === undefined) break;
     if (key === "visibleText") {
       visibleTextChars = halveToFloor(visibleTextChars);
@@ -404,12 +409,7 @@ const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
     } else {
       const keep = Math.floor(lists[key].length / 2);
       dropped[key] += lists[key].length - keep;
-      lists[key] =
-        keep === 0
-          ? []
-          : key === "interactiveElements"
-            ? lists[key].slice(0, keep)
-            : lists[key].slice(-keep);
+      lists[key] = keep === 0 ? [] : lists[key].slice(-keep);
     }
     text = encodeJsonText(value());
   }
@@ -961,9 +961,24 @@ const withBaskuleToolPolicy = Effect.fnUntraced(function* <A, E, R>(
   const server = yield* McpServer.McpServer;
   const filtering = McpServer.McpServer.of({
     ...server,
-    addTool: Effect.fn("BaskuleMcpPolicy.addTool")((options) =>
-      allowed.has(options.tool.name) ? server.addTool(options) : Effect.void,
-    ),
+    addTool: Effect.fn("BaskuleMcpPolicy.addTool")((options) => {
+      const { tool } = options;
+      if (!allowed.has(tool.name)) return Effect.void;
+      if (tool.name !== "request_secret") return server.addTool(options);
+      const properties = { ...tool.inputSchema.properties };
+      delete properties.delivery;
+      delete properties.fields;
+      delete properties.value;
+      return server.addTool({
+        ...options,
+        tool: new McpSchema.Tool({
+          ...tool,
+          description:
+            "Ask for one secret in a private card. Returns a one-use `secretRef` for a T3 tool. Use `url` for a sign-in or setup link.",
+          inputSchema: { ...tool.inputSchema, properties },
+        }),
+      });
+    }),
   });
   return yield* registration.pipe(Effect.provideService(McpServer.McpServer, filtering));
 });
@@ -1106,6 +1121,67 @@ const withToolAnalytics =
     return yield* registration.pipe(Effect.provideService(McpServer.McpServer, recordingServer));
   });
 
+/**
+ * ACP runtimes and Code Mode wrappers can drop or replace structured MCP tool results on
+ * completion. Recording each thread-scoped call's compact result before returning lets adapters
+ * recover sent messages, IDs, counts, and error flags without depending on output passthrough.
+ */
+const withToolResultCapture = Effect.fn("McpHttpServer.withToolResultCapture")(function* <A, E, R>(
+  registration: Effect.Effect<A, E, R>,
+) {
+  const server = yield* McpServer.McpServer;
+  const mcpSessions = yield* Effect.serviceOption(McpProviderSessions.McpProviderSessions);
+  if (Option.isNone(mcpSessions)) {
+    return yield* registration;
+  }
+  const capturingServer = McpServer.McpServer.of({
+    ...server,
+    addTool: Effect.fn("McpServer.addTool")(function (options) {
+      const toolName = options.tool.name;
+      // html_render tracks its own path/hash recovery with publish cleanup in HtmlRender.
+      if (toolName === HTML_RENDER_TOOL_NAME) {
+        return server.addTool(options);
+      }
+      return server.addTool({
+        ...options,
+        // Untraced: withToolSpans already opens a span per tool call.
+        handle: Effect.fnUntraced(function* (payload) {
+          const scopeOption = yield* Effect.serviceOption(
+            McpInvocationContext.McpInvocationContext,
+          );
+          const thread = Option.getOrUndefined(scopeOption)?.thread;
+          const epoch =
+            thread === undefined
+              ? undefined
+              : yield* mcpSessions.value.toolResultEpoch(thread.threadId);
+          return yield* options.handle(payload).pipe(
+            Effect.onExit((exit) => {
+              if (thread === undefined) return Effect.void;
+              if (exit._tag === "Success" && exit.value instanceof McpSchema.InputRequired) {
+                return Effect.void;
+              }
+              if (exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)) {
+                return Effect.void;
+              }
+              const output =
+                exit._tag === "Success"
+                  ? compactT3McpToolOutput(toolName, exit.value)
+                  : { isError: true };
+              return output === undefined
+                ? Effect.void
+                : mcpSessions.value.recordToolResult(thread.threadId, toolName, payload, output, {
+                    providerSessionId: thread.providerSessionId,
+                    epoch,
+                  });
+            }),
+          );
+        }),
+      });
+    }),
+  });
+  return yield* registration.pipe(Effect.provideService(McpServer.McpServer, capturingServer));
+});
+
 /** Each tool call gets a span named for its tool; arguments stay out, as they carry prompts and IDs. */
 const withToolSpans = Effect.fn("McpHttpServer.withToolSpans")(function* <A, E, R>(
   registration: Effect.Effect<A, E, R>,
@@ -1224,10 +1300,12 @@ export const toolkitRegistration = <Tools extends Record<string, Tool.Any>, EX, 
           Effect.flatMap(allowedToolkit(toolkit), (allowed) =>
             allowed === undefined
               ? Effect.void
-              : withToolSpans(
-                  withAdvertisedSchemas(
-                    allowed,
-                    McpServer.registerToolkit(decodeAsAdvertised(allowed)),
+              : withToolResultCapture(
+                  withToolSpans(
+                    withAdvertisedSchemas(
+                      allowed,
+                      McpServer.registerToolkit(decodeAsAdvertised(allowed)),
+                    ),
                   ),
                 ),
           ),
@@ -1249,7 +1327,9 @@ const imageToolRegistration = <Tools extends Record<string, Tool.Any>, A, E, R, 
   handlers: McpToolAccess.HandlersLayer<Tools, EX, RX>,
 ) =>
   Layer.effectDiscard(
-    registerNowOrOnFirstRequest(withBaskuleToolPolicy(withToolAnalytics(withToolSpans(register)))),
+    registerNowOrOnFirstRequest(
+      withBaskuleToolPolicy(withToolAnalytics(withToolResultCapture(withToolSpans(register)))),
+    ),
   ).pipe(Layer.provide(McpToolAccess.HandlersLayer.layer(handlers)));
 
 export const layerHtmlToolkit = Layer.mergeAll(
@@ -1279,7 +1359,7 @@ export const layerOrchestratorToolkit = toolkitRegistration(
 
 export const layerThreadToolkit = toolkitRegistration(ThreadToolkit, ThreadHandlers.layer);
 
-const layerMessageToolkit = toolkitRegistration(MessageToolkit, MessageHandlers.layer);
+export const layerMessageToolkit = toolkitRegistration(MessageToolkit, MessageHandlers.layer);
 
 const layerWorktreeToolkitRegistration = toolkitRegistration(
   WorktreeToolkit,
@@ -1374,7 +1454,15 @@ const layerToolExposure = Layer.effect(
     const server = yield* McpServer.McpServer;
     return McpToolExposure.make(
       () =>
-        server.tools.map(({ tool }) => ({ name: tool.name, description: tool.description ?? "" })),
+        server.tools
+          // Search finds only what this caller could list; these predicates read the request's scope.
+          .filter(({ annotations }) => {
+            const enabledWhen = Context.getOrUndefined(annotations, McpSchema.EnabledWhen);
+            return (
+              enabledWhen === undefined || enabledWhen({ protocolVersion: "", capabilities: {} })
+            );
+          })
+          .map(({ tool }) => ({ name: tool.name, description: tool.description ?? "" })),
       () => server.notifications["notifications/tools/list_changed"]({}),
     );
   }),

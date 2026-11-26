@@ -1,8 +1,9 @@
+import type { SideThreadOpenIntent } from "@t3tools/client-runtime/side-thread";
 import { T, msg, useGT, useMessages } from "gt-react";
 import { ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { AgentElapsed } from "./AgentElapsed";
 import { projectedSubagentsToRuntime } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { ReactNode } from "react";
+import { type ReactNode } from "react";
 import { useThreadShell, useProject } from "../../state/entities";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
 import { useAtomValue } from "@effect/atom-react";
@@ -71,7 +72,11 @@ export function V2LifecycleRow(props: {
   readonly environmentId: EnvironmentId;
   readonly resourceSummary?: boolean | undefined;
   readonly runs: ReadonlyArray<HandoffTimelineRun>;
-  readonly onOpenThread: (threadId: ThreadId) => void;
+  readonly onOpenThread: (
+    threadId: ThreadId,
+    environmentId?: EnvironmentId,
+    intent?: SideThreadOpenIntent,
+  ) => void;
 }) {
   const { item } = props;
   const gt = useGT();
@@ -353,7 +358,11 @@ export function SubagentNotificationLink(props: {
   readonly outcome: OrchestrationV2Notification["outcome"];
   readonly createdAt: string;
   readonly timestampFormat: TimestampFormat;
-  readonly onOpenThread: (threadId: ThreadId) => void;
+  readonly onOpenThread: (
+    threadId: ThreadId,
+    environmentId?: EnvironmentId,
+    intent?: SideThreadOpenIntent,
+  ) => void;
   readonly fallback: ReactNode;
 }) {
   const gt = useGT();

@@ -27,6 +27,7 @@ describe("DesktopUpdateStateSchema", () => {
       requiredVersion: "1.1.0",
       notAppliedVersion: "1.0.1",
       blockedByPolicy: "updates",
+      trackMismatch: { buildChannel: "nightly" },
     } satisfies Required<DesktopUpdateState>;
     for (const blockedByPolicy of ["updates", "channel"] as const) {
       expect(encodeUpdateState({ ...state, blockedByPolicy })).toEqual({

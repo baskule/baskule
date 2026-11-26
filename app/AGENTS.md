@@ -87,7 +87,7 @@ The most common defect in this repo is a change that works on the path you teste
 - `vp run dev` starts server and web. In a worktree, state defaults to that worktree's gitignored `.t3`, which deliberately outranks an ambient `T3CODE_HOME` so you cannot land on shared state by accident. An explicit `--home-dir` still wins. A plain `git clone` is not a worktree: it shares `~/.t3/dev` with the main checkout and is not seeded. To isolate one, run `vp run migrate-dev-db --base-dir <clone>/.t3`, then `vp run dev --home-dir <clone>/.t3`.
 - Ports derive from the worktree path and are stable across restarts, but read the real ones from the `[dev-runner]` line since occupied ports shift.
 - Sharing over the tailnet is three steps: run `vp run dev --share` in the background, wait for the `pairingUrl:` line in its output, then give that full URL to an unpaired browser. Do not wire up `tailscale serve` by hand, open the URL yourself, or consume the user's pairing link. A browser with the reusable dev cookie can use the bare origin. If a normal one-time token was consumed, mint a fresh one with `node apps/server/src/bin.ts pair`. It carries standard scopes, while the startup URL carries admin scopes needed for Connections settings.
-- To reuse web dev auth across worktrees, configure one fixed `T3CODE_DEV_AUTH_TOKEN` in the main checkout's gitignored `.env`. The `t3.json` setup links that file into worktrees. Never commit or publish the token or a startup URL. See [Reusable dev credential](docs/operations/development.md#reusable-dev-credential).
+- To reuse web dev auth across worktrees, configure one fixed `T3CODE_DEV_AUTH_TOKEN` in the main checkout's gitignored `.env`. The `t3.json` setup links that file into worktrees. Never commit or publish the token or a startup URL. See [Reusable dev credential](docs/operations/00_development.md#reusable-dev-credential).
 - Stop what you started, by the PID you tracked. See rule 1. `vp` does not pass SIGTERM on, so signalling the `vp run dev` PID alone leaves Vite and the server running. Stop the background task with your harness's own stop, which ends the whole tree.
 - Run dev servers, Metro, and builds from your own shell so they end with your session. Do not detach them with `systemd-run`, `nohup`, `setsid`, or `tmux` unless the user asks for one that outlives the session. Detached servers ran for weeks and filled RAM and swap. The dev runner stops itself above `--memory-limit-gb` (half of RAM, at most 16 GiB) on Linux.
 - Need a second checkout? `git worktree add` it next to this worktree, not in `/tmp`. Remove it when done.
@@ -115,7 +115,7 @@ An empty database is a bad test. Seed your worktree's `.t3` with a copy of real 
 - [Testing](docs/internals/testing.md) carries these same test rules, plus review guidance, for review bots. Change both together.
 - **Full automated suites are not the default.** They take time and consume shared host resources. Run repo-wide checks (`vp check`, `vp run -r test`, `vp run -r typecheck`) only when the scope or an unresolved risk justifies them; make that decision yourself and state what the wider run will prove. CI owns routine full-suite coverage.
 - Backend behavior changes ship with focused tests for that behavior.
-- Proof for a bug fix depends on the bug. Logic, data, state, and protocol bugs get a failing test first (the fewest that fail on `main` for that reason, in an existing case of the module's test file where one fits), then the fix. Purely visual bugs (spacing, colour, alignment, a layout shift) get before/after captures as their proof and no test: do not add UI tests for nitpicks, and do not ask for one in review when a capture already shows it. A server-only fix with no visible surface ships the test plus a short runtime transcript. For a bug a user can reproduce in the web client, `vp run scenarios:prove` shows it failing on base and passing on the fix in the real app; see [Scenarios](docs/operations/scenarios.md).
+- Proof for a bug fix depends on the bug. Logic, data, state, and protocol bugs get a failing test first (the fewest that fail on `main` for that reason, in an existing case of the module's test file where one fits), then the fix. Purely visual bugs (spacing, colour, alignment, a layout shift) get before/after captures as their proof and no test: do not add UI tests for nitpicks, and do not ask for one in review when a capture already shows it. A server-only fix with no visible surface ships the test plus a short runtime transcript. For a bug a user can reproduce in the web client, `vp run scenarios:prove` shows it failing on base and passing on the fix in the real app; see [Scenarios](docs/internals/15_testing.md).
 - The server is event-sourced, and side effects run after the command commits. In tests, drain the effect worker (`OrchestrationEffectWorkerV2.drain`) or await the specific persisted event or `Deferred` that marks the milestone. Never wait on sleeps or polling. A test that needs a timeout to pass is wrong. Concretely:
   - `it.effect` runs on a `TestClock`; `Effect.sleep` only advances through `TestClock.adjust`. `it.live` is wall-clock and only for subprocess or network fixtures.
   - No `yieldNow` or `sleep` polling loops. Await the `Deferred`, take from the `Queue`, or drain the worker.
@@ -149,7 +149,7 @@ For mobile verification, a missing or outdated native client is an install step,
 ## Pull requests
 
 - Never make a PR unless the developer explicitly asks you to do so.
-- `origin` is not always GitHub. Check `git remote get-url origin` before your first forge command and use that forge's CLI and skill. See [Forge mirror](docs/operations/development.md#forge-mirror-optional).
+- `origin` is not always GitHub. Check `git remote get-url origin` before your first forge command and use that forge's CLI and skill. See [Forge mirror](docs/operations/00_development.md#forge-mirror-optional).
 - Conventional commit titles, plain language: `fix(web): new threads no longer spike CPU`.
 - Body: the problem in a sentence or two, then how you fixed it. End with the model and harness that did the work.
 - UI changes need before/after images. Motion or timing needs a short video.
@@ -179,11 +179,11 @@ Most code changes do not need an internal documentation change. Agents can read 
 
 Clients send typed WebSocket requests. The server turns them into _commands_. The _orchestrator_ (`apps/server/src/orchestration-v2/Orchestrator.ts`) serializes commands and decides _events_ without doing any I/O. The _event sink_ commits those events, the _projections_ the UI reads, the _command receipt_, and _outbox_ effects in one transaction. The _effect worker_ then runs the effects, such as starting a provider turn or capturing a checkpoint, and feeds results back as commands. Provider CLIs run as subprocesses; per-provider _adapters_ translate their native protocols into orchestration events. Each turn ends with a _checkpoint_, a hidden git ref, so the app can diff and restore.
 
-Architecture and its constraints: `docs/internals/overview.md`. Glossary: `docs/internals/glossary.md`
+Architecture and its constraints: `docs/internals/01_architecture.md`. Glossary: `docs/internals/00_glossary.md`
 
 ## Where code lives
 
-- `apps/server` - WebSocket, orchestration, providers, checkpointing. Effect-heavy: read [Effect services](docs/internals/effect-services.md) before adding server code, and `.repos/effect/LLMS.md` for the Effect library itself.
+- `apps/server` - WebSocket, orchestration, providers, checkpointing. Effect-heavy: read [Effect services](docs/internals/02_effect-services.md) before adding server code, and `.repos/effect/LLMS.md` for the Effect library itself.
 - `apps/web` - React/Vite UI. `apps/desktop` wraps it, `apps/mobile` is React Native.
 - `packages/contracts` - Effect/Schema contracts plus small derived helpers. No heavy runtime logic.
 - `packages/shared` - shared runtime utils, subpath exports, no barrel.
@@ -194,8 +194,8 @@ Architecture and its constraints: `docs/internals/overview.md`. Glossary: `docs/
 
 - Complexity belongs at the adapter boundary. Orchestration stays pure, UI stays dumb.
 - Client mutations use `createEnvironmentRpcCommand`. Add protected methods to `CLIENT_GUARDED_RPC_SCOPES` in contracts and use the command's `permissionAtom` for UI availability. Grants are checked at execution against the destination environment; the server remains authoritative. Keep raw RPC clients inside `rpc/`, and extend the permission behavior tests when adding a protected method.
-- Server features are services; transports stay thin. A `ws.ts` RPC handler, HTTP route, or MCP tool decodes input, calls one service method, and maps errors. See [Effect services](docs/internals/effect-services.md).
-- `apps/web/src/components/ui` exports own their look. Pick a `variant` or `size`; do not restyle one with `className`. If none fits and the look is a generic concept, add a variant to the component; a look that belongs to one feature stays in that feature's own component, not in `components/ui`. Layout classes (width, flex, margin, position) belong on the parent. `shadcn/no-restyle` fails lint on violations. See [Web UI](docs/internals/web-ui.md).
+- Server features are services; transports stay thin. A `ws.ts` RPC handler, HTTP route, or MCP tool decodes input, calls one service method, and maps errors. See [Effect services](docs/internals/02_effect-services.md).
+- `apps/web/src/components/ui` exports own their look. Pick a `variant` or `size`; do not restyle one with `className`. If none fits and the look is a generic concept, add a variant to the component; a look that belongs to one feature stays in that feature's own component, not in `components/ui`. Layout classes (width, flex, margin, position) belong on the parent. `shadcn/no-restyle` fails lint on violations. See [Web UI](docs/internals/10_web-ui.md).
 - Reusable Effect functions use `Effect.fn("Service.operation")` with a stable span name, not a
   function wrapping `Effect.gen`. Keep `Effect.gen` for inline programs and layer construction.
   Use `Effect.fnUntraced` only when spans would be too frequent (stream chunks, per-event

@@ -1,4 +1,19 @@
 import {
+  WorkspaceFoldersError,
+  TaskFolder,
+  TaskFolderError,
+  WorkspaceAddTaskFolderRepositoryInput,
+  WorkspaceApproveLayoutCommandsInput,
+  WorkspaceLayoutCommandsInput,
+  WorkspaceLayoutCommandsResult,
+  WorkspaceListFoldersInput,
+  WorkspaceListFoldersResult,
+  WorkspaceScanFoldersInput,
+  WorkspaceScanFoldersResult,
+  WorkspaceTaskFolderInput,
+  WorkspaceTaskFolderResult,
+} from "./workspaceFolders.ts";
+import {
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -20,7 +35,7 @@ import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
   ProviderAuthCancelInput,
   ProviderAuthCompleteInput,
@@ -89,7 +104,7 @@ import {
   VcsStatusInput,
   VcsBranchStatus,
   VcsStatusSubscriptionInput,
-  VcsStatusResult,
+  VcsRefreshStatusResult,
   VcsStatusStreamEvent,
 } from "./git.ts";
 import {
@@ -104,6 +119,11 @@ import {
 import { KeybindingsConfigError } from "./keybindings.ts";
 import { OrchestrationSearchThreadsError } from "./threadSearch.ts";
 import {
+  ProviderMcpSignInCompleteInput,
+  ProviderMcpSignInCompleteResult,
+  ProviderMcpSignInError,
+  ProviderMcpSignInStartInput,
+  ProviderMcpSignInStartResult,
   ProviderUploadFeedbackError,
   ProviderUploadFeedbackInput,
   ProviderUploadFeedbackResult,
@@ -121,7 +141,6 @@ import {
 } from "./relayClient.ts";
 import {
   ORCHESTRATION_V2_WS_METHODS,
-  OrchestrationGetWorkflowScriptError,
   OrchestrationV2StopWorkflowError,
   OrchestrationV2ForceStopThreadError,
   OrchestrationV2DispatchCommandError,
@@ -295,6 +314,12 @@ export const WS_METHODS = {
   shellOpenInEditor: "shell.openInEditor",
 
   filesystemBrowse: "filesystem.browse",
+  workspaceListFolders: "workspace.listFolders",
+  workspaceScanFolders: "workspace.scanFolders",
+  workspaceTaskFolder: "workspace.taskFolder",
+  workspaceAddTaskFolderRepository: "workspace.addTaskFolderRepository",
+  workspaceLayoutCommands: "workspace.layoutCommands",
+  workspaceApproveLayoutCommands: "workspace.approveLayoutCommands",
   filesystemGetMetadata: "filesystem.getMetadata",
   assetsCreateUrl: "assets.createUrl",
   assetsPersistChatAttachments: "assets.persistChatAttachments",
@@ -307,6 +332,8 @@ export const WS_METHODS = {
   mcpAppsUpdateModelContext: "mcpApps.updateModelContext",
 
   providerUploadFeedback: "provider.uploadFeedback",
+  providerMcpSignInStart: "provider.mcpSignIn.start",
+  providerMcpSignInComplete: "provider.mcpSignIn.complete",
   providerAuthStart: "provider.auth.start",
   providerConsumeResetCredit: "provider.consumeResetCredit",
   providerAuthComplete: "provider.auth.complete",
@@ -417,6 +444,45 @@ export const WS_METHODS = {
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
 } as const;
 
+const WsWorkspaceListFoldersRpc = Rpc.make(WS_METHODS.workspaceListFolders, {
+  payload: WorkspaceListFoldersInput,
+  success: WorkspaceListFoldersResult,
+  error: Schema.Union([WorkspaceFoldersError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspaceScanFoldersRpc = Rpc.make(WS_METHODS.workspaceScanFolders, {
+  payload: WorkspaceScanFoldersInput,
+  success: WorkspaceScanFoldersResult,
+  error: Schema.Union([WorkspaceFoldersError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspaceTaskFolderRpc = Rpc.make(WS_METHODS.workspaceTaskFolder, {
+  payload: WorkspaceTaskFolderInput,
+  success: WorkspaceTaskFolderResult,
+  error: Schema.Union([TaskFolderError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspaceAddTaskFolderRepositoryRpc = Rpc.make(
+  WS_METHODS.workspaceAddTaskFolderRepository,
+  {
+    payload: WorkspaceAddTaskFolderRepositoryInput,
+    success: TaskFolder,
+    error: Schema.Union([TaskFolderError, EnvironmentAuthorizationError]),
+  },
+);
+
+const WsWorkspaceLayoutCommandsRpc = Rpc.make(WS_METHODS.workspaceLayoutCommands, {
+  payload: WorkspaceLayoutCommandsInput,
+  success: WorkspaceLayoutCommandsResult,
+  error: Schema.Union([TaskFolderError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspaceApproveLayoutCommandsRpc = Rpc.make(WS_METHODS.workspaceApproveLayoutCommands, {
+  payload: WorkspaceApproveLayoutCommandsInput,
+  success: WorkspaceLayoutCommandsResult,
+  error: Schema.Union([TaskFolderError, EnvironmentAuthorizationError]),
+});
+
 const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
   payload: ServerUpsertKeybindingInput,
   success: ServerUpsertKeybindingResult,
@@ -431,7 +497,9 @@ const WsServerRemoveKeybindingRpc = Rpc.make(WS_METHODS.serverRemoveKeybinding, 
 
 const WsServerProbeRpc = Rpc.make(WS_METHODS.serverProbe, {
   payload: Schema.Struct({}),
-  success: Schema.Struct({}),
+  success: Schema.Struct({
+    serverTime: Schema.optionalKey(IsoDateTime),
+  }),
   error: EnvironmentAuthorizationError,
 });
 
@@ -835,6 +903,18 @@ const WsProviderUploadFeedbackRpc = Rpc.make(WS_METHODS.providerUploadFeedback, 
   error: Schema.Union([ProviderUploadFeedbackError, EnvironmentAuthorizationError]),
 });
 
+const WsProviderMcpSignInStartRpc = Rpc.make(WS_METHODS.providerMcpSignInStart, {
+  payload: ProviderMcpSignInStartInput,
+  success: ProviderMcpSignInStartResult,
+  error: Schema.Union([ProviderMcpSignInError, EnvironmentAuthorizationError]),
+});
+
+const WsProviderMcpSignInCompleteRpc = Rpc.make(WS_METHODS.providerMcpSignInComplete, {
+  payload: ProviderMcpSignInCompleteInput,
+  success: ProviderMcpSignInCompleteResult,
+  error: Schema.Union([ProviderMcpSignInError, EnvironmentAuthorizationError]),
+});
+
 const WsSubscribeVcsBranchRpc = Rpc.make(WS_METHODS.subscribeVcsBranch, {
   payload: VcsStatusInput,
   success: VcsBranchStatus,
@@ -866,7 +946,7 @@ const WsVcsRefreshStatusRpc = Rpc.make(WS_METHODS.vcsRefreshStatus, {
     ...VcsStatusInput.fields,
     localOnly: Schema.optional(Schema.Boolean),
   }),
-  success: VcsStatusResult,
+  success: VcsRefreshStatusResult,
   error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
 });
 
@@ -1205,15 +1285,6 @@ const WsOrchestrationV2ForceStopThreadRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS
   error: Schema.Union([OrchestrationV2ForceStopThreadError, EnvironmentAuthorizationError]),
 });
 
-const WsOrchestrationV2GetWorkflowScriptRpc = Rpc.make(
-  ORCHESTRATION_V2_WS_METHODS.getWorkflowScript,
-  {
-    payload: OrchestrationV2RpcSchemas.getWorkflowScript.input,
-    success: OrchestrationV2RpcSchemas.getWorkflowScript.output,
-    error: Schema.Union([OrchestrationGetWorkflowScriptError, EnvironmentAuthorizationError]),
-  },
-);
-
 const WsOrchestrationV2GetTurnItemRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS.getTurnItem, {
   payload: OrchestrationV2RpcSchemas.getTurnItem.input,
   success: OrchestrationV2RpcSchemas.getTurnItem.output,
@@ -1448,6 +1519,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsMutateRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
+  WsWorkspaceListFoldersRpc,
+  WsWorkspaceScanFoldersRpc,
+  WsWorkspaceTaskFolderRpc,
+  WsWorkspaceAddTaskFolderRepositoryRpc,
+  WsWorkspaceLayoutCommandsRpc,
+  WsWorkspaceApproveLayoutCommandsRpc,
   WsFilesystemGetMetadataRpc,
   WsAssetsCreateUrlRpc,
   WsAssetsPersistChatAttachmentsRpc,
@@ -1458,6 +1535,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpAppsReadResourceRpc,
   WsMcpAppsUpdateModelContextRpc,
   WsProviderUploadFeedbackRpc,
+  WsProviderMcpSignInStartRpc,
+  WsProviderMcpSignInCompleteRpc,
   WsSubscribeVcsStatusRpc,
   WsSubscribeVcsBranchRpc,
   WsVcsRefreshBranchRpc,
@@ -1507,7 +1586,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeAuthAccessRpc,
   WsSubscribeResourceTelemetryRpc,
   WsOrchestrationV2DispatchCommandRpc,
-  WsOrchestrationV2GetWorkflowScriptRpc,
   WsOrchestrationV2StopWorkflowRpc,
   WsOrchestrationV2ForceStopThreadRpc,
   WsOrchestrationV2GetTurnItemRpc,

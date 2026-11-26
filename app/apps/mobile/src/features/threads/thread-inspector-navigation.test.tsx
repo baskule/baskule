@@ -9,11 +9,12 @@ const harness = vi.hoisted(() => ({
   dispatch: (_action: unknown) => {},
   getState: (): unknown => undefined,
   getRoute: (): unknown => undefined,
+  inspectorSupported: true,
 }));
 
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 vi.mock("../layout/AdaptiveWorkspaceLayout", () => ({
-  useWorkspacePaneState: () => ({ fileInspector: { supported: true } }),
+  useWorkspacePaneState: () => ({ fileInspector: { supported: harness.inspectorSupported } }),
 }));
 vi.mock("@react-navigation/native", async () => {
   const { createRequire } = await import("node:module");
@@ -27,7 +28,7 @@ vi.mock("@react-navigation/native", async () => {
   };
 });
 
-import { useOpenThreadInspector } from "./thread-inspector-navigation";
+import { useOpenThreadInspector, useReturnToThread } from "./thread-inspector-navigation";
 import { useOpenLinkedThread } from "./useOpenLinkedThread";
 
 const requireNavigation = NodeModule.createRequire(
@@ -38,11 +39,20 @@ const { StackRouter, StackActions } = requireNavigation("@react-navigation/route
   StackActions: typeof import("@react-navigation/native").StackActions;
 };
 
-function setup(fromAgents: boolean, fullscreen = false) {
+function setup(fromAgents: boolean, fullscreen = false, inspectorSupported = true) {
+  harness.inspectorSupported = inspectorSupported;
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   const router = StackRouter({});
   const options = {
-    routeNames: ["Home", "Thread", "ThreadAgents", "ThreadInspectorFullscreen"],
+    routeNames: [
+      "Home",
+      "Thread",
+      "ThreadAgents",
+      "ThreadInspectorFullscreen",
+      "LinkedThread",
+      "ThreadReview",
+      "GitConfirm",
+    ],
     routeParamList: {},
     routeGetIdList: {},
   };
@@ -66,12 +76,15 @@ function setup(fromAgents: boolean, fullscreen = false) {
     );
   let openInspector: ReturnType<typeof useOpenThreadInspector>;
   let openLinkedThread: ReturnType<typeof useOpenLinkedThread>;
+  let returnToThread: ReturnType<typeof useReturnToThread>;
   function Probe() {
     const open = useOpenThreadInspector();
     const openLinked = useOpenLinkedThread();
+    const returnTo = useReturnToThread();
     useLayoutEffect(() => {
       openInspector = open;
       openLinkedThread = openLinked;
+      returnToThread = returnTo;
     });
     return null;
   }
@@ -93,6 +106,9 @@ function setup(fromAgents: boolean, fullscreen = false) {
     },
     openLinked(threadId: string) {
       act(() => openLinkedThread({ environmentId: source.environmentId, threadId }));
+    },
+    returnTo(thread: Parameters<typeof returnToThread>[0]) {
+      act(() => returnToThread(thread));
     },
     [Symbol.dispose]() {
       act(() => root.unmount());
@@ -133,6 +149,29 @@ it("opens a completion link in the parent inspector", () => {
     },
   });
 });
+
+it.each([
+  { confirmFrom: "parent", routes: ["Home", "Thread"] },
+  // A side thread's review, opened from the parent's inspector, sits above the parent's route.
+  { confirmFrom: "child", routes: ["Home", "Thread", "ThreadReview", "Thread"] },
+])(
+  "returns from a Git confirmation to the $confirmFrom thread without replacing another",
+  ({ confirmFrom, routes }) => {
+    using screen = setup(false);
+    const inspector = { type: "device", ...screen.source } as const;
+    screen.open(inspector);
+    const thread = { ...screen.source, threadId: confirmFrom };
+    if (confirmFrom !== "parent") screen.dispatch(StackActions.push("ThreadReview", thread));
+    screen.dispatch(StackActions.push("GitConfirm", thread));
+    screen.returnTo(thread);
+    expect(screen.state.routes.map((route) => route.name)).toEqual(routes);
+    expect(screen.state.routes[1]).toMatchObject({
+      key: screen.parentKey,
+      params: { ...screen.source, prompt: "retained prompt", inspector },
+    });
+    expect(screen.state.routes.at(-1)?.params).toMatchObject(thread);
+  },
+);
 
 it("switches between subagents and devices in the same parent route", () => {
   using screen = setup(false);

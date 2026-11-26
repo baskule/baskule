@@ -19,6 +19,7 @@ export const layerProviderRegistry = Layer.effect(
     );
     return ProviderRegistry.ProviderRegistry.of({
       getProviders: Effect.flatMap(service, (s) => s.getProviders),
+      rebuildMissingAndRefresh: Effect.flatMap(service, (s) => s.rebuildMissingAndRefresh),
       refresh: (provider) => Effect.flatMap(service, (s) => s.refresh(provider)),
       refreshInstance: (id) => Effect.flatMap(service, (s) => s.refreshInstance(id)),
       refreshAfterUpdate: (provider, id) =>

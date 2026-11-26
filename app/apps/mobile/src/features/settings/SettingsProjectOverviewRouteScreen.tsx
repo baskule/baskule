@@ -1,3 +1,4 @@
+import { BASKULE_FLAGS } from "../../baskule/flags";
 import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import { T, useGT } from "gt-react-native";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
@@ -39,6 +40,7 @@ import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
+import { ProjectRepositoriesSection } from "./ProjectRepositoriesSection";
 import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
 import { leaveSettingsPage } from "./settings-navigation";
@@ -438,6 +440,24 @@ function ProjectOverviewContent(props: {
           );
         })}
       </SettingsSection>
+      {props.members.map((member) => {
+        const environment = props.environments.find(
+          (entry) => entry.environmentId === member.environmentId,
+        )?.label;
+        return BASKULE_FLAGS.sourceControl ? (
+          <ProjectRepositoriesSection
+            key={`${member.environmentId}:${member.id}`}
+            member={member}
+            title={
+              props.members.length === 1
+                ? gt("Repositories")
+                : gt("Repositories · {environment}", {
+                    environment: environment ?? gt("Environment"),
+                  })
+            }
+          />
+        ) : null;
+      })}
       <SettingsSection
         title={gt("Danger", { $context: "section heading for destructive actions" })}
       >

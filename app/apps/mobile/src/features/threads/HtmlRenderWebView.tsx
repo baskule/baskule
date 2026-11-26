@@ -169,7 +169,7 @@ export function HtmlRenderWebView(props: {
           }
           onOpenWindow={(event) => {
             const url = event.nativeEvent.targetUrl;
-            if (/^https?:/i.test(url)) void tryOpenExternalUrl(url, "html-render");
+            if (/^https?:/i.test(url)) void tryOpenExternalUrl(url, "external-link");
           }}
           onLoadEnd={() => {
             setLoaded(true);

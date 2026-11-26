@@ -47,7 +47,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("telemetry identi
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
       const fileSystem = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
       const tornWrites = FileSystem.FileSystem.of({
         ...fileSystem,
         open: (filePath, options) =>
@@ -72,9 +71,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("telemetry identi
           ),
       });
 
-      const identity = yield* Identify.getTelemetryIdentityForHome(
-        path.join(config.baseDir, "home"),
-      ).pipe(Effect.provideService(FileSystem.FileSystem, tornWrites));
+      const identity = yield* Identify.getTelemetryIdentity.pipe(
+        Effect.provideService(FileSystem.FileSystem, tornWrites),
+      );
 
       assert.deepEqual(identity, { distinctId: null, installId: null });
       assert.isFalse(yield* fileSystem.exists(config.anonymousIdPath));
@@ -87,12 +86,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("telemetry identi
     return Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
       const fileSystem = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
       yield* fileSystem.makeDirectory(config.anonymousIdPath);
 
-      const identity = yield* Identify.getTelemetryIdentityForHome(
-        path.join(config.baseDir, "home"),
-      );
+      const identity = yield* Identify.getTelemetryIdentity;
       assert.deepEqual(identity, { distinctId: null, installId: null });
       assert.deepEqual(yield* fileSystem.readDirectory(config.anonymousIdPath), []);
 

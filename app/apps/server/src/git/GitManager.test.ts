@@ -1,3 +1,4 @@
+import type { ServerProvider } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
@@ -239,6 +240,7 @@ function runStackedAction(
 
 function makeManager(input?: {
   textGeneration?: Partial<FakeGitTextGeneration>;
+  providers?: ReadonlyArray<ServerProvider>;
   serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
   setupScriptRunner?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"];
   gitConfigReads?: string[];
@@ -320,7 +322,7 @@ function makeManager(input?: {
   const layerManager = Layer.mergeAll(
     Layer.succeed(TextGeneration.TextGeneration, textGeneration),
     Layer.mock(ProviderRegistry.ProviderRegistry)({
-      getProviders: Effect.succeed([]),
+      getProviders: Effect.succeed(input?.providers ?? []),
     }),
     Layer.succeed(
       ProjectSetupScriptRunner.ProjectSetupScriptRunner,

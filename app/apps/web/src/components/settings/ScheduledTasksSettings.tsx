@@ -23,7 +23,6 @@ import {
 import { type ReactNode, useRef, useState } from "react";
 import type {
   EnvironmentId,
-  ModelSelection,
   OrchestrationV2ThreadLaunchWorkspaceStrategy,
   ProjectId,
   ScheduledTask,
@@ -59,7 +58,7 @@ import { msg, T, useGT, useLocale, useMessages, Var } from "gt-react";
 import { m, type MessageResolver } from "../../i18n/messages";
 
 import { formatRelativeTime } from "../../timestampFormat";
-import { useEnvironmentSettings } from "../../hooks/useSettings";
+import { useEnvironmentSettings, usePrimarySettings } from "../../hooks/useSettings";
 import { getCustomModelOptionsByInstance } from "../../modelSelection";
 import { providerInstanceEntriesFor } from "../../providerInstances";
 import { usePrimaryCloudLinkState } from "../../cloud/cloudLinkState";
@@ -198,15 +197,15 @@ const EMPTY_DRAFT: DraftState = {
   weekdays: new Set([1, 2, 3, 4, 5]),
   projectId: "",
   threadId: "",
+  savedThreadId: "",
   threadMode: "new_thread",
   workspaceMode: baskule.hosted ? "root" : "worktree",
   baseRef: "main",
   startFromOrigin: true,
   existingWorktreePath: "",
-  modelKey: "",
+  modelSelection: null,
   runtimeMode: "full-access",
   interactionMode: "default",
-  baseModelSelection: null,
   signatureEnabled: false,
   ...WEBHOOK_SIGNATURE_DEFAULTS,
   signatureSecret: "",
@@ -343,15 +342,6 @@ function Field({
       {children}
     </div>
   );
-}
-
-function splitModelKey(value: string): ModelSelection | null {
-  const index = value.indexOf(":");
-  if (index <= 0 || index === value.length - 1) return null;
-  return {
-    instanceId: ProviderInstanceId.make(value.slice(0, index)),
-    model: value.slice(index + 1),
-  };
 }
 
 /** formatRelativeTime handles only the past; upcoming runs need future labels. */
@@ -811,6 +801,7 @@ function ScheduledTaskRow({
   const canEdit = canOperate && isAuthor;
   const canStop = canOperate && (isAuthor || me?.user.role === "admin" || space?.role === "owner");
   const [busy, setBusy] = useState(false);
+  const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
   const [deliveriesOpen, setDeliveriesOpen] = useState(false);
   const isWebhook = task.schedule.type === "webhook";
   const toggle = useAtomCommand(serverEnvironment.setScheduledTaskEnabled, {
@@ -856,7 +847,15 @@ function ScheduledTaskRow({
       status={
         <div className="flex flex-wrap items-center gap-2">
           <span>
-            {scheduleLabel(task.schedule, timeZone, task.nextRunAt, messages, locale)} ·{" "}
+            {scheduleLabel(
+              task.schedule,
+              timestampFormat,
+              timeZone,
+              task.nextRunAt,
+              messages,
+              locale,
+            )}{" "}
+            ·{" "}
             {task.blockedByPolicy !== undefined ? (
               task.blockedByPolicy
             ) : !task.enabled ? (
@@ -1285,6 +1284,8 @@ function ScheduledTaskEditorDialog({
   return (
     <Dialog
       open
+      // A stray click outside would discard the unsaved draft; Escape and Cancel still close it.
+      disablePointerDismissal
       onOpenChange={(open) => {
         if (!open && !saving) onClose();
       }}
@@ -1578,7 +1579,7 @@ function ScheduledTaskEditorForm({
   );
 
   const firstInstance = instanceEntries[0];
-  const draftSelection = draft.modelKey ? splitModelKey(draft.modelKey) : null;
+  const draftSelection = draft.modelSelection;
   const activeSelection =
     draftSelection &&
     instanceEntries.some((entry) => entry.instanceId === draftSelection.instanceId && entry.enabled)
@@ -1686,12 +1687,6 @@ function ScheduledTaskEditorForm({
       );
       return;
     }
-    const modelSelection =
-      draft.baseModelSelection !== null &&
-      draft.baseModelSelection.instanceId === selection.instanceId &&
-      draft.baseModelSelection.model === selection.model
-        ? draft.baseModelSelection
-        : selection;
     const workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy =
       baskule.hosted || draft.workspaceMode === "root"
         ? { type: "root" }
@@ -1710,9 +1705,10 @@ function ScheduledTaskEditorForm({
       schedule,
       projectId: selectedProjectId as ProjectId,
       threadId: draft.threadId ? (draft.threadId as ThreadId) : null,
+      ...(draft.threadId === "" && draft.savedThreadId !== "" ? { unbindThread: true } : {}),
       ...(offersThreadModes ? { threadMode: draft.threadMode } : {}),
       workspaceStrategy,
-      modelSelection,
+      modelSelection: selection,
       // Tasks have no mode picker; a mode above the administrator's ceiling would fail every run.
       runtimeMode:
         clampManagedRuntimeMode(environment?.serverConfig?.managedPolicy, draft.runtimeMode) ??
@@ -1766,8 +1762,7 @@ function ScheduledTaskEditorForm({
                 setDraft((current) => ({
                   ...unbindDraftFromThread(current),
                   projectId: defaultScheduledTaskProjectId(projectsOn(next.environmentId), scope),
-                  modelKey: "",
-                  baseModelSelection: null,
+                  modelSelection: null,
                   baseRef: "",
                   startFromOrigin: true,
                   existingWorktreePath: "",

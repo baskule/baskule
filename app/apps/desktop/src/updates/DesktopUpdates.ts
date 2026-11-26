@@ -57,6 +57,7 @@ import {
   reduceDesktopUpdateStateOnCheckStart,
   reduceDesktopUpdateStateOnDownloadComplete,
   reduceDesktopUpdateStateOnDownloadFailure,
+  reduceDesktopUpdateStateOnDownloadLost,
   reduceDesktopUpdateStateOnDownloadProgress,
   reduceDesktopUpdateStateOnDownloadStart,
   reduceDesktopUpdateStateOnInstallFailure,
@@ -83,6 +84,8 @@ const UpdateInfo = Schema.Struct({
   releaseName: Schema.optional(Schema.NullOr(Schema.String)),
   // Malformed notes must not block update-state decoding; normalizeDesktopUpdateReleaseNotes validates separately.
   releaseNotes: Schema.optional(Schema.Unknown),
+  releaseDate: Schema.optional(Schema.String),
+  downloadedFile: Schema.optional(Schema.String),
 });
 
 const DownloadProgressInfo = Schema.Struct({
@@ -377,6 +380,13 @@ function getAutoUpdateDisabledReason(args: {
   return null;
 }
 
+const trackLabel = (channel: DesktopUpdateChannel) =>
+  channel === "nightly" ? "Nightly" : "Stable";
+
+// Clients localize `trackMismatch`; this English text serves older renderers and remote reports.
+const trackMismatchMessage = (build: DesktopUpdateChannel, saved: DesktopUpdateChannel) =>
+  `This ${trackLabel(build)} build can't update from the ${trackLabel(saved)} track on its own. Switch the update track back to ${trackLabel(build)}, or use Review beside Update track to retry the switch to ${trackLabel(saved)}.`;
+
 function isArm64HostRunningIntelBuild(runtimeInfo: DesktopRuntimeInfo): boolean {
   return runtimeInfo.hostArch === "arm64" && runtimeInfo.appArch === "x64";
 }
@@ -413,6 +423,7 @@ export const make = Effect.gen(function* () {
   const finishedUpdateActions = yield* PubSub.unbounded<UpdateAction>();
   const updaterConfiguredRef = yield* Ref.make(false);
   const lastLoggedDownloadMilestoneRef = yield* Ref.make(-1);
+  const downloadedFileRef = yield* Ref.make(Option.none<string>());
   const notAppliedVersionRef = yield* Ref.make(Option.none<string>());
   const updateStateRef = yield* Ref.make<DesktopUpdateState>(
     createInitialDesktopUpdateState(
@@ -1066,6 +1077,19 @@ export const make = Effect.gen(function* () {
       }),
     ).pipe(Effect.withSpan("desktop.updates.installDownloadedUpdate"));
 
+  const downloadedFileMissing = Ref.get(downloadedFileRef).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.succeed(false),
+        onSome: (path) =>
+          fileSystem.exists(path).pipe(
+            Effect.map((exists) => !exists),
+            Effect.orElseSucceed(() => false),
+          ),
+      }),
+    ),
+  );
+
   const installWithExpectedVersion = Effect.fn("desktop.updates.install")(function* (
     expectedVersion?: string,
   ) {
@@ -1078,11 +1102,32 @@ export const make = Effect.gen(function* () {
       };
     }
     let installVersion = expectedVersion;
-    // A download can be hours old: a release published since replaces it before restarting.
     const retained = yield* Ref.get(updateStateRef);
-    if (
-      retained.downloadedVersion !== null &&
-      (expectedVersion === undefined || retained.downloadedVersion === expectedVersion) &&
+    const retainedVersion = retained.downloadedVersion;
+    const retainsExpectedDownload =
+      retainedVersion !== null &&
+      (expectedVersion === undefined || retainedVersion === expectedVersion);
+    // A cache cleaner can delete the archive; Squirrel.Mac would then fail every install attempt.
+    if (retainsExpectedDownload && (yield* downloadedFileMissing)) {
+      yield* logUpdaterWarning("the downloaded update file is gone; downloading it again", {
+        version: retainedVersion,
+      });
+      yield* updateState(reduceDesktopUpdateStateOnDownloadLost);
+      const download = yield* downloadAvailableUpdate(true);
+      if (!download.completed) {
+        return {
+          accepted: download.accepted,
+          completed: false,
+          failed: download.accepted,
+          state: yield* Ref.get(updateStateRef),
+        };
+      }
+      if (expectedVersion !== undefined) {
+        installVersion = (yield* Ref.get(updateStateRef)).downloadedVersion ?? expectedVersion;
+      }
+    } else if (
+      // A download can be hours old: a release published since replaces it before restarting.
+      retainsExpectedDownload &&
       (yield* checkForUpdates("install", "acquire")) &&
       (yield* Ref.get(updateStateRef)).status === "available"
     ) {
@@ -1090,7 +1135,7 @@ export const make = Effect.gen(function* () {
       // electron-updater compares a stale feed with the running build, not the retained download.
       if (
         refreshed.availableVersion === null ||
-        compareReleaseVersions(refreshed.availableVersion, retained.downloadedVersion) <= 0
+        compareReleaseVersions(refreshed.availableVersion, retainedVersion) <= 0
       ) {
         yield* setState(retained);
       } else {
@@ -1249,7 +1294,7 @@ export const make = Effect.gen(function* () {
 
     if (Option.isNone(activeAction)) {
       const checkedAt = yield* currentIsoTimestamp;
-      yield* updateState((current) => ({
+      yield* updateState(({ trackMismatch: _trackMismatch, ...current }) => ({
         ...current,
         status: "error",
         message: error.message,
@@ -1311,6 +1356,7 @@ export const make = Effect.gen(function* () {
       Effect.flatMap(
         Effect.fn("desktop.updates.applyUpdateDownloaded")(function* (info) {
           const state = yield* Ref.get(updateStateRef);
+          yield* Ref.set(downloadedFileRef, Option.fromNullishOr(info.downloadedFile));
           yield* setState(reduceDesktopUpdateStateOnDownloadComplete(state, info.version));
           yield* logUpdaterInfo("update downloaded", { version: info.version });
         }),

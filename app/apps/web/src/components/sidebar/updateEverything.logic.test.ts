@@ -35,6 +35,20 @@ function machine(
   };
 }
 
+// A desktop-mode server the desktop app cannot control, such as a WSL backend or an older app.
+function withoutDesktopControl(base: UpdateEverythingMachine): UpdateEverythingMachine {
+  return {
+    ...base,
+    serverConfig: {
+      ...base.serverConfig!,
+      environment: {
+        ...base.serverConfig!.environment,
+        capabilities: { repositoryIdentity: true, serverSelfUpdate: "desktop-managed" },
+      },
+    },
+  };
+}
+
 describe("collectServerUpdateTargets", () => {
   it("updates remote servers that can move to the target and names every skipped one", () => {
     const { targets, skipped } = collectServerUpdateTargets(
@@ -57,6 +71,7 @@ describe("collectServerUpdateTargets", () => {
         machine("current", "0.0.50", "boot-service"),
         machine("current-offline", "0.0.50", "boot-service", { connected: false }),
         machine("manual", "0.0.40", undefined),
+        withoutDesktopControl(machine("wsl-backend", "0.0.40", "desktop-managed")),
       ],
       "0.0.50",
     );
@@ -68,10 +83,38 @@ describe("collectServerUpdateTargets", () => {
     expect(skipped.map((entry) => [entry.label, entry.reason])).toEqual([
       ["nightly-service", "on the nightly channel"],
       ["offline", "not connected"],
-      ["never-connected", "not connected"],
+      ["never-connected", "still loading"],
       ["no-scope", "no permission"],
       ["busy", "already updating"],
       ["manual", "needs a manual update"],
+      ["wsl-backend", "update T3 Code on that machine"],
+    ]);
+  });
+
+  it("says why a disconnected server was skipped when its connection says", () => {
+    const replaced =
+      "This address now runs a different T3 Code install (b7a4, not 0359). Remove this connection and add it again.";
+    const { skipped } = collectServerUpdateTargets(
+      [
+        machine("replaced", "0.0.40", "boot-service", {
+          connected: false,
+          serverConfig: null,
+          connectionError: replaced,
+        }),
+        machine("silent", "0.0.40", "boot-service", { connected: false, connectionError: null }),
+        machine("switched-off", "0.0.40", "boot-service", {
+          connected: false,
+          serverConfig: null,
+          turnedOff: true,
+        }),
+      ],
+      "0.0.50",
+    );
+
+    expect(skipped.map((entry) => [entry.label, entry.reason])).toEqual([
+      ["replaced", replaced],
+      ["silent", "not connected"],
+      ["switched-off", "turned off"],
     ]);
   });
 
