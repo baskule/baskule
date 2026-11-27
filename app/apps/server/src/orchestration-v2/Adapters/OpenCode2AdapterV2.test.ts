@@ -43,6 +43,7 @@ import { TestClock } from "effect/testing";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
+import { t3OrchestrationSystemPrompt } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { htmlRenderFromToolItem, sentMessageFromToolItem } from "@t3tools/shared/toolOutput";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
@@ -159,6 +160,7 @@ const noOpenRequests: ReadonlyArray<ProviderReplayEntry> = [
 
 const withInstructions = (
   entries: ReadonlyArray<ProviderReplayEntry>,
+  value = "<any>",
 ): ReadonlyArray<ProviderReplayEntry> => {
   const first = entries.findIndex(
     (entry) =>
@@ -192,7 +194,7 @@ const withInstructions = (
         out("session.instructions.entry.put", {
           sessionID: SESSION,
           key: "t3-code",
-          value: "<any>",
+          value,
         }),
         reply("session.instructions.entry.put", null),
         ...entries.slice(at),
@@ -341,6 +343,7 @@ const resumed = (
     readonly resolveExtractedTextPath?: (path: string) => Effect.Effect<string | undefined>;
     readonly fileSystem?: FileSystem.FileSystem;
     readonly onPrompt?: (input: unknown) => void;
+    readonly instructions?: string;
   },
 ) =>
   Effect.gen(function* () {
@@ -361,17 +364,20 @@ const resumed = (
                   ? [out("job.list", { kind: "shell" }), reply("job.list", { data: [] })]
                   : emptyShellInventory),
               ])),
-        ...withInstructions([
-          ...(options?.supervised === true
-            ? [
-                out("agent.list", "<any>"),
-                reply("agent.list", agentList),
-                out("session.update", { sessionID: SESSION, permissions: supervisedRules }),
-                reply("session.update", null),
-              ]
-            : []),
-          ...entries,
-        ]),
+        ...withInstructions(
+          [
+            ...(options?.supervised === true
+              ? [
+                  out("agent.list", "<any>"),
+                  reply("agent.list", agentList),
+                  out("session.update", { sessionID: SESSION, permissions: supervisedRules }),
+                  reply("session.update", null),
+                ]
+              : []),
+            ...entries,
+          ],
+          options?.instructions,
+        ),
       ],
       {
         ...(options?.version === undefined ? {} : { version: options.version }),
@@ -5980,7 +5986,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
   );
 
   it.effect(
-    "registers T3's MCP server for the thread alone and removes it when the thread unloads",
+    "registers T3 MCP without background wait guidance for a thread lacking that capability",
     () =>
       Effect.gen(function* () {
         const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
@@ -5992,27 +5998,36 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
           endpoint: "http://127.0.0.1:3773/mcp",
           authorizationHeader: "Bearer thread-credential",
           browserToolsAvailable: false,
+          capabilities: new Set(["orchestration"]),
         });
         yield* Effect.addFinalizer(() => mcpSessions.clear(threadId));
         const server = "t3-code-c26f2f1fb6fbbcc2";
-        const { runtime, thread } = yield* resumed([
-          out("mcp.add", {
-            server,
-            "location[directory]": WORK,
-            config: {
-              type: "remote",
-              url: "http://127.0.0.1:3773/mcp",
-              headers: { Authorization: "Bearer thread-credential" },
-              oauth: false,
-            },
-          }),
-          reply("mcp.add", null),
-          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
-          promptAccepted,
-          event("session.execution.succeeded", { sessionID: SESSION }),
-          out("mcp.remove", { server, "location[directory]": WORK }),
-          reply("mcp.remove", null),
-        ]);
+        const { runtime, thread } = yield* resumed(
+          [
+            out("mcp.add", {
+              server,
+              "location[directory]": WORK,
+              config: {
+                type: "remote",
+                url: "http://127.0.0.1:3773/mcp",
+                headers: { Authorization: "Bearer thread-credential" },
+                oauth: false,
+              },
+            }),
+            reply("mcp.add", null),
+            out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+            promptAccepted,
+            event("session.execution.succeeded", { sessionID: SESSION }),
+            out("mcp.remove", { server, "location[directory]": WORK }),
+            reply("mcp.remove", null),
+          ],
+          {
+            instructions: [
+              buildRuntimeInstructions({ harness: "OpenCode", model: bigPickle.model }),
+              t3OrchestrationSystemPrompt(true, false),
+            ].join("\n\n"),
+          },
+        );
         const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
         const started = yield* runtime.startTurn(turnInput(thread)).pipe(Effect.forkScoped);
         yield* TestClock.adjust("250 millis");
