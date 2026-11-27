@@ -58,6 +58,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as ServerSettings from "../serverSettings.ts";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
+import { BaskuleRpcPolicy } from "../baskule/rpcPolicy.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import {
@@ -474,6 +475,7 @@ export const layerWithOptions = (
       const fileSystem = yield* FileSystem.FileSystem;
       const mcpSessionRegistry = yield* McpSessionRegistry.McpSessionRegistry;
       const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
+      const allowedMcpTools = (yield* Effect.service(BaskuleRpcPolicy))?.mcpTools;
       /** Unreadable settings must preserve explicit browser-access opt-outs. */
       const installationGate = yield* ProviderInstallationGate.ProviderInstallationGate;
       const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
@@ -617,11 +619,15 @@ export const layerWithOptions = (
                 >(["orchestration", "worktree"]);
                 if (browserToolsAvailable) capabilities.add("preview");
                 if (deviceToolsAvailable) capabilities.add("device");
-                const backgroundWait = yield* registry.get(providerInstanceId).pipe(
-                  Effect.flatMap((adapter) => adapter.getCapabilities()),
-                  Effect.map((adapter) => adapter.tools.supportsBackgroundWait === true),
-                  Effect.option,
-                );
+                // baskule: a policy that withholds the tool never grants its capability.
+                const backgroundWait =
+                  allowedMcpTools?.has("t3_background_wait") === false
+                    ? Option.some(false)
+                    : yield* registry.get(providerInstanceId).pipe(
+                        Effect.flatMap((adapter) => adapter.getCapabilities()),
+                        Effect.map((adapter) => adapter.tools.supportsBackgroundWait === true),
+                        Effect.option,
+                      );
                 if (Option.getOrElse(backgroundWait, () => false)) {
                   capabilities.add("background-wait");
                 }

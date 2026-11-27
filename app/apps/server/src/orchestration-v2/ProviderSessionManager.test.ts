@@ -41,10 +41,12 @@ import { TestClock } from "effect/testing";
 import { HttpServer } from "effect/http";
 
 import { ProviderWorkspaceMissingError } from "../provider/Errors.ts";
+import { BASKULE_POLICY, BaskuleRpcPolicy } from "../baskule/rpcPolicy.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import type { McpCapability } from "../mcp/McpInvocationContext.ts";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -1778,9 +1780,12 @@ it("ProviderSessionManagerV2 counts a delegated task as a wake only while its re
   );
 });
 
-it.effect(
-  "ProviderSessionManagerV2 issues MCP credentials before opening and revokes them on close",
-  () =>
+it.effect.each([
+  { policy: undefined, backgroundWait: true },
+  { policy: BASKULE_POLICY, backgroundWait: false },
+])(
+  "ProviderSessionManagerV2 issues and revokes MCP credentials with background wait $backgroundWait",
+  ({ policy, backgroundWait }) =>
     Effect.gen(function* () {
       const state = yield* Ref.make(emptyState);
       const mcpConfigs = yield* Ref.make<
@@ -1818,7 +1823,14 @@ it.effect(
         assert.isDefined(token);
         const resolved = yield* registry.resolve(token!);
         assert.equal(resolved?.thread.threadId, threadId);
-        assert.deepEqual(resolved?.capabilities, new Set(["preview", "orchestration", "worktree"]));
+        const expectedCapabilities = new Set<McpCapability>([
+          "preview",
+          "orchestration",
+          "worktree",
+        ]);
+        if (backgroundWait) expectedCapabilities.add("background-wait");
+        assert.deepEqual(resolved?.capabilities, expectedCapabilities);
+        assert.deepEqual(captured?.capabilities, expectedCapabilities);
 
         assert.isFalse(yield* captured!.hasPendingWake!);
 
@@ -1833,7 +1845,11 @@ it.effect(
             state,
             idleTimeoutMs: 1_000,
             mcpConfigs,
-          }),
+            capabilities: {
+              ...CodexCapabilities,
+              tools: { ...CodexCapabilities.tools, supportsBackgroundWait: true },
+            },
+          }).pipe(Layer.provide(Layer.succeed(BaskuleRpcPolicy, policy))),
         ),
       );
     }),
