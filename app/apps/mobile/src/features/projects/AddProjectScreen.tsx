@@ -85,11 +85,14 @@ import {
   useSavedRemoteConnections,
 } from "../../state/use-remote-environment-registry";
 import {
+  chooserDraftKey,
   isMissingCloneParentBrowseFailure,
   resolveAddProjectEnvironment,
 } from "./AddProjectScreen.logic";
+import { readNewTaskFlowState } from "../threads/new-task-flow-state";
 import {
   createNewTaskDraft,
+  retargetSavedNewTaskDraft,
   setComposerDraftText,
   waitForComposerDraftsLoaded,
 } from "../../state/use-composer-drafts";
@@ -676,10 +679,24 @@ function getActiveRoute(navigation: {
   return state?.routes[state.index];
 }
 
+function isActiveRoute(
+  navigation: Parameters<typeof getActiveRoute>[0],
+  originRoute: ReturnType<typeof getActiveRoute>,
+): boolean {
+  const activeRoute = getActiveRoute(navigation);
+  // A warm link can change the task without replacing its native route key.
+  return (
+    originRoute !== undefined &&
+    activeRoute?.key === originRoute.key &&
+    activeRoute.name === originRoute.name &&
+    activeRoute.params === originRoute.params
+  );
+}
+
 function useOpenNewTaskDraft() {
   const navigation = useNavigation<NativeStackNavigationProp<ReactNavigation.RootParamList>>();
   const selectDetail = useSelectWorkspaceDetail();
-  return (
+  return async (
     params: {
       environmentId: EnvironmentId;
       projectId: ProjectId;
@@ -689,16 +706,25 @@ function useOpenNewTaskDraft() {
     },
     originRoute: NavigationState<ParamListBase>["routes"][number] | undefined,
   ) => {
-    const activeRoute = getActiveRoute(navigation);
-    // A warm link can change the task without replacing its native route key.
-    if (
-      !originRoute ||
-      activeRoute?.key !== originRoute.key ||
-      activeRoute.name !== originRoute.name ||
-      activeRoute.params !== originRoute.params
-    )
-      return;
-    selectDetail({ name: "Thread", params: { draft: params } });
+    if (!isActiveRoute(navigation, originRoute)) return;
+    const chooserDraft =
+      params.draftId === undefined
+        ? chooserDraftKey(
+            navigation.getState()?.routes ?? [],
+            (flowKey) => readNewTaskFlowState(flowKey).draftKey,
+          )
+        : null;
+    const carried =
+      chooserDraft !== null &&
+      (await retargetSavedNewTaskDraft(chooserDraft, {
+        environmentId: params.environmentId,
+        projectId: params.projectId,
+      }).catch(() => false));
+    if (!isActiveRoute(navigation, originRoute)) return;
+    selectDetail({
+      name: "Thread",
+      params: { draft: carried ? { ...params, draftId: chooserDraft } : params },
+    });
   };
 }
 
@@ -755,7 +781,7 @@ function useOpenExistingProject(environment: EnvironmentOption | null) {
         ? existing.title
         : m(msg("{title} is still archived. Try again later.", { title: existing.title })),
     );
-    openNewTaskDraft(
+    void openNewTaskDraft(
       {
         environmentId: existing.environmentId,
         projectId: existing.id,
@@ -835,7 +861,7 @@ function useCreateProject(environment: EnvironmentOption | null) {
       );
       return result;
     }
-    openNewTaskDraft(
+    void openNewTaskDraft(
       {
         environmentId: environment.environmentId,
         projectId,
@@ -1121,7 +1147,7 @@ export function AddProjectNewScreen(props: { readonly environmentId?: string | s
       );
       return;
     }
-    openNewTaskDraft(
+    void openNewTaskDraft(
       {
         environmentId: environment.environmentId,
         projectId,
@@ -1375,7 +1401,7 @@ export function AddProjectDestinationScreen(props: {
           ),
         );
       } else {
-        openNewTaskDraft(
+        void openNewTaskDraft(
           {
             environmentId: environment.environmentId,
             projectId,

@@ -18,7 +18,6 @@ import {
 } from "react";
 import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
@@ -31,6 +30,7 @@ import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 
 /** Holds the page still behind the open picker; its lifetime is the popup element's. */
 function lockBackgroundScroll(popup: HTMLElement | null) {
@@ -167,9 +167,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       options: selectedInstanceOptions,
     }) ??
     retainedModelWhileProviderLocked(activeEntry, props.model) ??
-    (activeEntry?.driverKind === "opencode"
-      ? undefined
-      : selectedInstanceOptions[0]);
+    (activeEntry?.driverKind === "opencode" ? undefined : selectedInstanceOptions[0]);
   const triggerTitle = selectedModel
     ? getTriggerDisplayModelName(selectedModel, activeEntry?.driverKind)
     : props.model || gt("Choose model");
@@ -423,10 +421,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           {props.isComposerOwned ? (
             <span {...triggerTextProps}>{triggerText}</span>
           ) : (
-            <Tooltip>
-              <TooltipTrigger render={<span {...triggerTextProps} />}>{triggerText}</TooltipTrigger>
-              <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
-            </Tooltip>
+            <SharedTooltipTrigger
+              render={<span {...triggerTextProps} />}
+              label={triggerTooltipContent}
+            >
+              {triggerText}
+            </SharedTooltipTrigger>
           )}
           {props.triggerSuffix}
           {selectedModel?.isUnavailable && !selectedEntries && props.triggerLabel === undefined ? (

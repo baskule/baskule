@@ -26,6 +26,7 @@ export const layerProviderRegistry = Layer.effect(
         Effect.flatMap(service, (s) => s.refreshAfterUpdate(provider, id)),
       refreshWorkspaceSnapshot: (input) =>
         Effect.flatMap(service, (s) => s.refreshWorkspaceSnapshot(input)),
+      runtimeModeLimits: (input) => Effect.flatMap(service, (s) => s.runtimeModeLimits(input)),
       invalidateModelCaches: (input) =>
         Effect.flatMap(service, (s) => s.invalidateModelCaches(input)),
       refreshModelCatalog: Effect.flatMap(service, (s) => s.refreshModelCatalog),

@@ -1,3 +1,4 @@
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -29,7 +30,7 @@ import {
 } from "./Sidebar.logic";
 
 import type { SidebarThreadSummary } from "../types";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 
 export interface TerminalStatusIndicator {
   label: string;
@@ -84,35 +85,33 @@ export function ThreadTerminalStatusButton({
     { count: terminalIds.length },
   );
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            aria-label={label}
-            data-testid={`sidebar-terminal-status-${threadRef.threadId}`}
-            className={cn(
-              "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm outline-none hover:opacity-80 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-              status?.colorClass,
-            )}
-            onPointerDown={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              revealThreadTerminal(threadRef, terminalId);
-              onThreadActivate(threadRef);
-            }}
-          />
-        }
-      >
-        <TerminalIcon
-          className="size-3.5 motion-safe:animate-status-pulse"
-          onAnimationStart={synchronizeTerminalPulse}
+    <SharedTooltipTrigger
+      render={
+        <button
+          type="button"
+          aria-label={label}
+          data-testid={`sidebar-terminal-status-${threadRef.threadId}`}
+          className={cn(
+            "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm outline-none hover:opacity-80 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+            status?.colorClass,
+          )}
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            revealThreadTerminal(threadRef, terminalId);
+            onThreadActivate(threadRef);
+          }}
         />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{label}</TooltipPopup>
-    </Tooltip>
+      }
+      label={label}
+    >
+      <TerminalIcon
+        className="size-3.5 motion-safe:animate-status-pulse"
+        onAnimationStart={synchronizeTerminalPulse}
+      />
+    </SharedTooltipTrigger>
   );
 }
 
@@ -127,43 +126,43 @@ function ThreadStatusLabel({
   const label = m(status.label);
   if (compact) {
     return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span
-              role="img"
-              aria-label={label}
-              className={`inline-flex size-3.5 shrink-0 items-center justify-center ${status.colorClass}`}
-            />
-          }
-        >
-          <span
-            className={`size-[9px] rounded-full ${status.dotClass} ${status.pulse ? "motion-safe:animate-status-pulse" : ""}`}
-          />
-        </TooltipTrigger>
-        <TooltipPopup side="top">{label}</TooltipPopup>
-      </Tooltip>
-    );
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
+      <SharedTooltipTrigger
         render={
           <span
             role="img"
             aria-label={label}
-            className={`inline-flex items-center gap-1 text-3xs ${status.colorClass}`}
+            className={`inline-flex size-3.5 shrink-0 items-center justify-center ${status.colorClass}`}
           />
         }
+        label={label}
       >
         <span
-          className={`h-1.5 w-1.5 rounded-full ${status.dotClass} ${status.pulse ? "motion-safe:animate-status-pulse" : ""}`}
+          className={`size-[9px] rounded-full ${status.dotClass} ${
+            status.pulse ? "motion-safe:animate-status-pulse" : ""
+          }`}
         />
-        <span className="hidden md:inline">{label}</span>
-      </TooltipTrigger>
-      <TooltipPopup side="top">{label}</TooltipPopup>
-    </Tooltip>
+      </SharedTooltipTrigger>
+    );
+  }
+
+  return (
+    <SharedTooltipTrigger
+      render={
+        <span
+          role="img"
+          aria-label={label}
+          className={`inline-flex items-center gap-1 text-3xs ${status.colorClass}`}
+        />
+      }
+      label={label}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${status.dotClass} ${
+          status.pulse ? "motion-safe:animate-status-pulse" : ""
+        }`}
+      />
+      <span className="hidden md:inline">{label}</span>
+    </SharedTooltipTrigger>
   );
 }
 
@@ -238,24 +237,20 @@ export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSumma
         </Tooltip>
       ) : null}
       {isRemoteThread ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <span
-                aria-label={
-                  threadEnvironmentLabel ?? gt("Remote", { $context: "machine location" })
-                }
-                className="inline-flex items-center justify-center"
-              />
-            }
-          >
-            <EnvironmentMachineIcon
-              kind={remoteMachine}
-              className="size-3 text-muted-foreground/60"
+        <SharedTooltipTrigger
+          render={
+            <span
+              aria-label={threadEnvironmentLabel ?? gt("Remote", { $context: "machine location" })}
+              className="inline-flex items-center justify-center"
             />
-          </TooltipTrigger>
-          <TooltipPopup side="top">{threadEnvironmentLabel}</TooltipPopup>
-        </Tooltip>
+          }
+          label={threadEnvironmentLabel}
+        >
+          <EnvironmentMachineIcon
+            kind={remoteMachine}
+            className="size-3 text-muted-foreground/60"
+          />
+        </SharedTooltipTrigger>
       ) : null}
     </span>
   );

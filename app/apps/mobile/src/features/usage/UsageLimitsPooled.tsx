@@ -356,7 +356,7 @@ function PoolWindowCard({
             accessibilityLabel={
               resetsIn && credits
                 ? gt(
-                    "Segment {index}, {account}, {remaining}% left, {resetsIn}, {credits, plural, other {{credits} reset credits banked}}",
+                    "Segment {index}, {account}, {remaining}% left, {resetsIn}, {credits, plural, one {{credits} reset credit banked} other {{credits} reset credits banked}}",
                     {
                       index: index + 1,
                       account: accountName(account, m),
@@ -374,7 +374,7 @@ function PoolWindowCard({
                     })
                   : credits
                     ? gt(
-                        "Segment {index}, {account}, {remaining}% left, {credits, plural, other {{credits} reset credits banked}}",
+                        "Segment {index}, {account}, {remaining}% left, {credits, plural, one {{credits} reset credit banked} other {{credits} reset credits banked}}",
                         {
                           index: index + 1,
                           account: accountName(account, m),

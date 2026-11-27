@@ -35,6 +35,7 @@ import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
 import * as NodeURL from "node:url";
 
+import * as DesktopEnvironment from "../../app/DesktopEnvironment.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import * as BrowserImport from "../../preview/BrowserImport/BrowserImport.ts";
 import * as PreviewManager from "../../preview/Manager.ts";
@@ -349,13 +350,14 @@ const getPreviewConfig = DesktopIpc.makeIpcMethod({
   result: DesktopPreviewWebviewConfigSchema,
   handler: Effect.fn("desktop.ipc.preview.getConfig")(function* ({ environmentId, profileId }) {
     const manager = yield* PreviewManager.PreviewManager;
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const { scope, persistent, namespace } = resolvePartitionScope(environmentId, profileId);
     // Session creation installs UA and permission handlers before a guest can attach.
     yield* manager.getBrowserSession(scope, persistent, namespace);
     return {
       partition: yield* manager.getBrowserPartition(scope, persistent, namespace),
       webPreferences: PREVIEW_WEBVIEW_PREFERENCES,
-      preloadUrl: NodeURL.pathToFileURL(`${__dirname}/preview-pick-preload.cjs`).href,
+      preloadUrl: NodeURL.pathToFileURL(environment.previewPickPreloadPath).href,
     };
   }),
 });

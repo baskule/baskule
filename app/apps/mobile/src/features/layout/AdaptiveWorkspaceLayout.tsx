@@ -4,6 +4,7 @@ import { BASKULE_FLAGS } from "../../baskule/flags";
 import {
   WorkspaceColumnsRendererContext,
   WorkspacePresentationHostContext,
+  WorkspaceVisibleRouteContext,
 } from "./workspace-presentation-context";
 import { useAndroidFloatingTabs } from "../settings/appearance/AppearancePreferencesProvider";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -51,6 +52,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { AsyncResult } from "effect/reactivity";
 import {
+  constrainAuxiliaryPaneWidth,
   deriveFileInspectorPaneLayout,
   alignListPaneToHinge,
   deriveLayout,
@@ -138,6 +140,7 @@ export function Inspector(props: {
   const { registerWorkspaceInspector } = useAdaptiveWorkspaceLayout();
   const navigation = use(NavigationContext);
   const route = use(NavigationRouteContext);
+  const visibleWorkspaceRoute = use(WorkspaceVisibleRouteContext);
   const content: InspectorContent = {
     ...props.content,
     resetKeys: [route?.key, ...(props.content.resetKeys ?? [])],
@@ -162,6 +165,13 @@ export function Inspector(props: {
     }
     deactivateRef.current = registerWorkspaceInspector(content, route?.key, props.revealKey);
   });
+  // An overlay (a maximized thread, a sheet) blurs the route but leaves it the visible workspace
+  // page, so the column stays registered and the sidebar doesn't shift behind the overlay.
+  const handleBlur = useEffectEvent(() => {
+    if (route !== undefined && visibleWorkspaceRoute === route.key) return;
+    focusedRef.current = false;
+    syncRegistration();
+  });
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Navigation focus events own the inspector registration lifetime.
   useEffect(() => {
@@ -171,13 +181,9 @@ export function Inspector(props: {
       focusedRef.current = true;
       syncRegistration();
     };
-    const blur = () => {
-      focusedRef.current = false;
-      syncRegistration();
-    };
     if (navigation.isFocused()) focus();
     const unsubscribeFocus = navigation.addListener("focus", focus);
-    const unsubscribeBlur = navigation.addListener("blur", blur);
+    const unsubscribeBlur = navigation.addListener("blur", handleBlur);
     return () => {
       unsubscribeFocus();
       unsubscribeBlur();
@@ -384,20 +390,13 @@ function AdaptiveWorkspaceLayoutContent(
         layout,
         viewportWidth: width,
         preferredWidth: fileInspectorPreferredWidth ?? undefined,
-        reservedLeadingWidth:
-          shouldRenderPrimarySidebar && showPrimarySidebar && !sidebarFloats
-            ? (layout.listPaneWidth ?? 0) + (layout.listPaneGap ?? 0)
-            : 0,
       }),
-    [
-      fileInspectorPreferredWidth,
-      layout,
-      showPrimarySidebar,
-      shouldRenderPrimarySidebar,
-      sidebarFloats,
-      width,
-    ],
+    [fileInspectorPreferredWidth, layout, width],
   );
+  const setInspectorWidth = (preferredWidth: number) =>
+    setFileInspectorPreferredWidth(
+      constrainAuxiliaryPaneWidth({ preferredWidth, viewportWidth: width }),
+    );
   const [workspaceInspector, setWorkspaceInspector] = useState<{
     readonly content: InspectorContent;
     readonly active: boolean;
@@ -972,7 +971,7 @@ function AdaptiveWorkspaceLayoutContent(
     revealPrimarySidebar,
     setPrimarySidebarVisible,
     openWorkspaceTab,
-    setAuxiliaryPaneWidth: setFileInspectorPreferredWidth,
+    setAuxiliaryPaneWidth: setInspectorWidth,
     setNativeInspectorWidth: (width: number) =>
       setNativeInspectorWidthFraction(inspectorWidthFor(width / viewportWidth) / viewportWidth),
   });
@@ -1168,7 +1167,7 @@ function AdaptiveWorkspaceLayoutContent(
           active={workspaceInspector?.active ?? false}
           panes={panes}
           content={workspaceInspector?.content}
-          setAuxiliaryPaneWidth={setFileInspectorPreferredWidth}
+          setAuxiliaryPaneWidth={setInspectorWidth}
           onClose={() => setFileInspectorPreferredVisible(false)}
           onClosed={handleWorkspaceInspectorClosed}
         />

@@ -38,8 +38,12 @@ import {
   resolveProjectSettings,
 } from "@t3tools/shared/projectSettings";
 import { resolveProjectScripts } from "@t3tools/shared/projectScripts";
+import {
+  providerOptionDescriptors,
+  refuseAgentModePick,
+  resolveRuntimeMode,
+} from "../../delegatedTaskModes.ts";
 import { threadLinkFor } from "../../McpInvocationContext.ts";
-import { resolveRuntimeMode } from "../../delegatedTaskModes.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestrationMcp from "../../OrchestratorMcpService.ts";
 import { newCommandId, readCaller, resolveProjectId, unavailable } from "../../threadAccess.ts";
@@ -338,6 +342,16 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
             const provider = OrchestrationMcp.withWorkspaceModels(providers, cwd).find(
               (candidate) => candidate.instanceId === instanceId,
             );
+            // Checked with the same provider snapshot that validates the options below.
+            yield* refuseAgentModePick({
+              callerRuntimeMode: context.limits.runtimeMode,
+              picked: requestedSelection.options,
+              descriptors: providerOptionDescriptors(provider),
+              held:
+                caller?.modelSelection.instanceId === instanceId
+                  ? caller.modelSelection.options
+                  : undefined,
+            });
             if (provider === undefined) return requestedSelection;
             yield* OrchestrationMcp.requireAdvertisedModel(provider, model);
             const options = yield* OrchestrationMcp.validateModelOptions(

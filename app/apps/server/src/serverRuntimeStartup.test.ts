@@ -23,6 +23,8 @@ import * as Ref from "effect/Ref";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
+
+import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
@@ -132,6 +134,7 @@ it.effect.each([
             return published;
           }),
       }),
+      Layer.mock(BackgroundPolicy.BackgroundPolicy)({}),
       Layer.mock(ServerSettings.ServerSettingsService)({
         start: Effect.void,
         getSettings: Effect.succeed({

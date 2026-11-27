@@ -1,4 +1,4 @@
-import { Tooltip, TooltipTrigger, TooltipPopup } from "~/components/ui/tooltip";
+/* oxlint-disable react/no-array-index-key -- Text spans retain their order within an immutable page. */
 import { msg } from "gt-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { m } from "~/i18n/messages";
@@ -14,6 +14,7 @@ import {
   type WordSpan,
   type WordLink,
 } from "./word-protocol";
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
 
 type Opened = {
   pages: readonly WordPageSize[];
@@ -200,14 +201,7 @@ function WordTextLayer(props: {
         return (
           // oxlint-disable-next-line react/no-array-index-key -- Immutable document coordinates identify this row or cell for the mounted file.
           <Fragment key={index}>
-            {span.title ? (
-              <Tooltip>
-                <TooltipTrigger render={text} />
-                <TooltipPopup>{span.title}</TooltipPopup>
-              </Tooltip>
-            ) : (
-              text
-            )}
+            {span.title ? <SharedTooltipTrigger render={text} label={span.title} /> : text}
             {span.after === "br" ? <br /> : span.after === "tab" ? "\t" : null}
           </Fragment>
         );

@@ -58,6 +58,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.serverGetDatabaseStorage]: "server",
   [WS_METHODS.serverReclaimDatabaseSpace]: "server",
   [WS_METHODS.serverUpdateSettings]: "server",
+  [WS_METHODS.serverGetProviderRuntimeModeLimits]: "server",
   [WS_METHODS.serverGetTraceDiagnostics]: "server",
   [WS_METHODS.serverGetProcessDiagnostics]: "server",
   [WS_METHODS.serverGetHostResources]: "server",

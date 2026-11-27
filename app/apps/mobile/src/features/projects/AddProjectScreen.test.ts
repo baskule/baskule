@@ -32,6 +32,7 @@ const state = vi.hoisted(() => ({
   createResult: null as Promise<unknown> | null,
   createNewResult: null as Promise<unknown> | null,
   startCloneResult: null as Promise<unknown> | null,
+  lookupRepository: vi.fn(),
   connectionStates: {} as Record<string, EnvironmentConnectionPhase>,
   newProjectsRoot: null as string | null,
   waitForProject: vi.fn(),
@@ -76,6 +77,7 @@ vi.mock("react-native", () => ({
   View: "View",
 }));
 vi.mock("@react-navigation/native", () => ({
+  useRoute: () => state.navigationState?.routes[state.navigationState.index],
   useNavigation: () => ({
     dispatch: state.dispatch,
     getState: () =>
@@ -143,10 +145,14 @@ vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: (command: unkno
 vi.mock("../../state/use-atom-query-runner", () => ({
   useAtomQueryRunner:
     () =>
-    async ({ input }: { input?: { partialPath?: string } }) =>
-      input?.partialPath === "~"
-        ? AsyncResult.success({ parentPath: "/home/tester", entries: [] })
-        : undefined,
+    ({ input }: { input?: { partialPath?: string; repository?: string } }) =>
+      input?.repository
+        ? state.lookupRepository(input.repository)
+        : Promise.resolve(
+            input?.partialPath === "~"
+              ? AsyncResult.success({ parentPath: "/home/tester", entries: [] })
+              : undefined,
+          ),
 }));
 vi.mock("../../state/query", () => ({ useEnvironmentQuery: () => ({ data: null }) }));
 vi.mock("../../state/presentation", () => ({
@@ -339,6 +345,7 @@ function mountProjectFlow(
       "PullRequestFile",
       "NewTaskProject",
       "AddProject",
+      "AddProjectRepository",
       "AddProjectLocal",
       "AddProjectNew",
       "AddProjectDestination",

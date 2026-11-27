@@ -83,17 +83,6 @@ const stableUpdateInfo = (
   };
 };
 
-// Subscribes before emitting, so the state the emit publishes is the one awaited, not a scheduler yield.
-const nextPublishedState = (emit: () => void) =>
-  Effect.gen(function* () {
-    const updates = yield* DesktopUpdates.DesktopUpdates;
-    const { changes } = yield* updates.subscribe;
-    const published = yield* Stream.runHead(changes).pipe(Effect.forkChild);
-    emit();
-    yield* Fiber.join(published);
-    return yield* updates.getState;
-  });
-
 describe("DesktopUpdates", () => {
   it.effect.each(["darwin", "win32", "linux"] satisfies ReadonlyArray<NodeJS.Platform>)(
     "offers a compatible update and waits for download/install actions on %s",
@@ -1331,6 +1320,15 @@ describe("describeUpdateErrorCause", () => {
     cyclic.cause = cyclic;
     assert.include(DesktopUpdates.describeUpdateErrorCause(cyclic), "[truncated cause]");
     assert.isAtMost(DesktopUpdates.describeUpdateErrorCause(cyclic).length, 1024);
+
+    const describeCause = (outer: string, inner: string) =>
+      DesktopUpdates.describeUpdateErrorCause(
+        Object.assign(new Error(outer), { cause: new Error(inner) }),
+      );
+    const a = "a".repeat(512);
+    const b = "b".repeat(485);
+    assert.equal(describeCause(`${a.slice(1)}🚀`, "b"), `Error: ${a.slice(1)}; caused by Error: b`);
+    assert.equal(describeCause(a, `${b}🚀`), `Error: ${a}; caused by Error: ${b}`);
   });
 
   it("does not serialize arbitrary payloads or let unreadable errors break logging", () => {

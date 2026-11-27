@@ -40,7 +40,6 @@ import {
   DialogTrigger,
 } from "../ui/dialog";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { AnimatedHeight } from "../AnimatedHeight";
@@ -66,6 +65,7 @@ import {
   parseRemotePairingFields,
   formatDesktopSshConnectionError,
 } from "./ConnectionsSettings.logic";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 
 const SSH_PROTOCOL_NAME = "SSH";
 const EMPTY_DISCOVERED_SSH_HOSTS: ReadonlyArray<DesktopDiscoveredSshHost> = [];
@@ -569,7 +569,7 @@ export function AddEnvironmentDialog({
                     <T>Loading hosts…</T>
                   </div>
                 ) : filteredDiscoveredSshHosts.length > 0 ? (
-                  <AutocompleteList className="max-h-72">
+                  <AutocompleteList scrollAreaClassName="max-h-72">
                     {filteredDiscoveredSshHosts.map((target, index) => {
                       const address = formatDesktopSshTarget(target);
                       const shortcutCommand = index < 9 ? threadJumpCommandForIndex(index) : null;
@@ -663,25 +663,25 @@ export function AddEnvironmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <DialogTrigger
-              render={
-                <Button size="xs" variant="ghost-muted" aria-label={gt("Add environment")}>
-                  <PlusIcon className="size-3" />
-                  <span>
-                    <T>Add environment</T>
-                  </span>
-                </Button>
-              }
-            />
-          }
-        />
-        <TooltipPopup side="top">
-          <T>Add environment</T>
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <DialogTrigger
+            render={
+              <Button size="xs" variant="ghost-muted" aria-label={gt("Add environment")}>
+                <PlusIcon className="size-3" />
+                <span>
+                  <T>Add environment</T>
+                </span>
+              </Button>
+            }
+          />
+        }
+        label={
+          <>
+            <T>Add environment</T>
+          </>
+        }
+      />
       <DialogPopup className="max-h-[80dvh] sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>

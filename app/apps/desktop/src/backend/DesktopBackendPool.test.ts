@@ -129,11 +129,12 @@ function layerPool(
         DesktopEnvironment.layer({
           dirname: "/repo/apps/desktop/src",
           homeDirectory: "/test-home",
-          platform: "linux",
+          // Backend pool fixtures exercise orchestration without spawning a recovery worker.
+          platform: "darwin",
           processArch: "x64",
           appVersion: "1.2.3",
           appPath: "/repo",
-          isPackaged: true,
+          isPackaged: false,
           resourcesPath: "/missing/resources",
           runningUnderArm64Translation: false,
         }).pipe(

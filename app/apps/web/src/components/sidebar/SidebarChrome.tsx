@@ -33,7 +33,6 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "../ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
@@ -41,6 +40,7 @@ import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 
 import { observeResize } from "~/lib/observeResize";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { baskule } from "~/baskule/flags";
 import { BaskuleUserMenu } from "~/baskule/BaskuleUserMenu"; // baskule:
 
@@ -141,29 +141,30 @@ function HistoryNavigationButton({
   );
   const Icon = direction === "back" ? ArrowLeftIcon : ArrowRightIcon;
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            aria-label={label}
-            className={cn(
-              "[-webkit-app-region:no-drag]",
-              onBackdrop && "relative top-auto translate-y-0",
-            )}
-            disabled={!enabled}
-            onClick={() => navigateHistory(direction)}
-            size="icon-sm"
-            variant={onBackdrop ? "media-navigation" : "ghost"}
-          />
-        }
-      >
-        <Icon className="size-3.5" />
-      </TooltipTrigger>
-      <TooltipPopup side="bottom">
-        {label}
-        {shortcutLabel ? ` (${shortcutLabel})` : ""}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <Button
+          aria-label={label}
+          className={cn(
+            "[-webkit-app-region:no-drag]",
+            onBackdrop && "relative top-auto translate-y-0",
+          )}
+          disabled={!enabled}
+          onClick={() => navigateHistory(direction)}
+          size="icon-sm"
+          variant={onBackdrop ? "media-navigation" : "ghost"}
+        />
+      }
+      label={
+        <>
+          {label}
+          {shortcutLabel ? ` (${shortcutLabel})` : ""}
+        </>
+      }
+      side="bottom"
+    >
+      <Icon className="size-3.5" />
+    </SharedTooltipTrigger>
   );
 }
 
@@ -216,16 +217,14 @@ function SidebarUtilityItem({
 }) {
   return (
     <SidebarMenuItem className="shrink-0">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <SidebarMenuButton aria-label={label} onClick={onClick} size="icon">
-              {icon}
-            </SidebarMenuButton>
-          }
-        />
-        <TooltipPopup side="top">{label}</TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <SidebarMenuButton aria-label={label} onClick={onClick} size="icon">
+            {icon}
+          </SidebarMenuButton>
+        }
+        label={label}
+      />
     </SidebarMenuItem>
   );
 }

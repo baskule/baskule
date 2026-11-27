@@ -42,18 +42,6 @@ export function exhaustedUsageWindow(
       const auto = exhausted.find((window) => window.id === "autoPercentUsed");
       return /^(auto|default|grok|composer)/.test(model) ? auto && api : api;
     }
-    case "antigravity": {
-      const family = model.match(/^(gemini|claude|gpt)-/)?.[1];
-      return exhausted.find((window) => {
-        const pool = window.id.match(/^(gemini|claude|gpt|3p)-/)?.[1];
-        return (
-          pool === undefined ||
-          family === undefined ||
-          pool === family ||
-          (pool === "3p" && (family === "claude" || family === "gpt"))
-        );
-      });
-    }
     case "codex": {
       // Seat-based plans spend credits only past their plan windows, so the credit cap blocks only plans without them.
       const hasPlanWindows = windows.some(

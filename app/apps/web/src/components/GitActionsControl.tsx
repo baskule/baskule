@@ -78,6 +78,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { Textarea } from "~/components/ui/textarea";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
 import { useOpenInPreferredEditor } from "~/editorPreferences";
 import {
   useGitStackedAction,
@@ -310,18 +311,16 @@ function GitActionProgressButtonContent({
         )}
       >
         <div className="min-h-0 overflow-hidden">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <p className="truncate pt-0.5 text-left text-2xs font-normal text-muted-foreground" />
-              }
-            >
-              {progress.output}
-            </TooltipTrigger>
-            <TooltipPopup side="bottom" className="max-w-96 break-words">
-              {progress.output}
-            </TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            render={
+              <p className="truncate pt-0.5 text-left text-2xs font-normal text-muted-foreground" />
+            }
+            label={progress.output}
+            side="bottom"
+            className="max-w-96 break-words"
+          >
+            {progress.output}
+          </SharedTooltipTrigger>
         </div>
       </div>
     </div>
@@ -348,18 +347,16 @@ function GitActionSuccessButtonContent({ success }: { success: InlineGitActionSu
         )}
       >
         <div className="min-h-0 overflow-hidden">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <p className="truncate pt-0.5 text-left text-2xs font-normal text-muted-foreground" />
-              }
-            >
-              {success.description}
-            </TooltipTrigger>
-            <TooltipPopup side="bottom" className="max-w-96 break-words">
-              {success.description}
-            </TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            render={
+              <p className="truncate pt-0.5 text-left text-2xs font-normal text-muted-foreground" />
+            }
+            label={success.description}
+            side="bottom"
+            className="max-w-96 break-words"
+          >
+            {success.description}
+          </SharedTooltipTrigger>
         </div>
       </div>
     </div>
@@ -481,12 +478,18 @@ function CheckoutGitActionsControl({
       : gt("vs {ref}", { ref: resolvedChangesTotals.baseRef })
     : null;
 
+  const [selectionBranch, setSelectionBranch] = useState(gitStatusForActions?.refName ?? null);
+  if (gitStatusForActions && selectionBranch !== gitStatusForActions.refName) {
+    setSelectionBranch(gitStatusForActions.refName);
+    setExcludedFiles(new Set());
+  }
   const allFiles = gitStatusForActions?.workingTree.files ?? [];
   // Changed-file paths are repository-relative, so they must resolve against
   // the worktree root from the same status snapshot, not the project cwd.
   const workingTreeRoot = gitStatusForActions?.workingTree.rootPath ?? null;
+  // A stash can temporarily hide excluded paths. Only current files affect the commit.
   const selectedFiles = allFiles.filter((f) => !excludedFiles.has(f.path));
-  const allSelected = excludedFiles.size === 0;
+  const allSelected = selectedFiles.length === allFiles.length;
   const noneSelected = selectedFiles.length === 0;
 
   const initAction = useVcsInitAction(sourceControlScope);
@@ -649,6 +652,9 @@ function CheckoutGitActionsControl({
     }
 
     const actionResult = result.value;
+    if (actionResult.commit.status === "created") {
+      setExcludedFiles((current) => (current === excludedFiles ? new Set() : current));
+    }
     const branchUpdate = resolveThreadBranchUpdate(actionResult);
     if (branchUpdate) branchFollower?.follow(branchUpdate.branch);
     setInlineSuccess({
@@ -675,29 +681,22 @@ function CheckoutGitActionsControl({
     });
   };
 
-  // Keep a typed message for the retry unless the user already started a new one.
-  const restoreDialogCommitMessageOnFailure =
-    (commitMessage: string) => (committed: boolean | undefined) => {
-      if (committed || !commitMessage) return;
-      setDialogCommitMessage((current) => current || commitMessage);
-    };
-
-  const runDialogActionOnNewBranch = () => {
+  const runDialogAction = async (featureBranch: boolean) => {
     if (!isCommitDialogOpen) return;
     const commitMessage = dialogCommitMessage.trim();
-
     setIsCommitDialogOpen(false);
     setDialogCommitMessage("");
-    setExcludedFiles(new Set());
     setIsEditingFiles(false);
-
-    void runGitActionWithToast({
+    const committed = await runGitActionWithToast({
       action: "commit",
       ...(commitMessage ? { commitMessage } : {}),
       ...(!allSelected ? { filePaths: selectedFiles.map((f) => f.path) } : {}),
-      featureBranch: true,
-      skipDefaultBranchPrompt: true,
-    }).then(restoreDialogCommitMessageOnFailure(commitMessage));
+      featureBranch,
+      skipDefaultBranchPrompt: featureBranch,
+    });
+    if (!committed && commitMessage) {
+      setDialogCommitMessage((current) => current || commitMessage);
+    }
   };
 
   const runQuickAction = () => {
@@ -762,23 +761,8 @@ function CheckoutGitActionsControl({
       void runGitActionWithToast({ action: "push" });
       return;
     }
-    setExcludedFiles(new Set());
     setIsEditingFiles(false);
     setIsCommitDialogOpen(true);
-  };
-
-  const runDialogAction = () => {
-    if (!isCommitDialogOpen) return;
-    const commitMessage = dialogCommitMessage.trim();
-    setIsCommitDialogOpen(false);
-    setDialogCommitMessage("");
-    setExcludedFiles(new Set());
-    setIsEditingFiles(false);
-    void runGitActionWithToast({
-      action: "commit",
-      ...(commitMessage ? { commitMessage } : {}),
-      ...(!allSelected ? { filePaths: selectedFiles.map((f) => f.path) } : {}),
-    }).then(restoreDialogCommitMessageOnFailure(commitMessage));
   };
 
   const openChangedFileInEditor = (filePath: string) => {
@@ -1301,14 +1285,14 @@ function CheckoutGitActionsControl({
               variant="outline"
               size="sm"
               disabled={!canCreateFeatureBranch || noneSelected}
-              onClick={runDialogActionOnNewBranch}
+              onClick={() => void runDialogAction(true)}
             >
               <T>Commit on new branch</T>
             </Button>
             <Button
               size="sm"
               disabled={!canWriteSourceControl || noneSelected}
-              onClick={runDialogAction}
+              onClick={() => void runDialogAction(false)}
             >
               <T context="verb">Commit</T>
             </Button>

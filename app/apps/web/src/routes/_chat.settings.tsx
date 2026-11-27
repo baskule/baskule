@@ -1,5 +1,5 @@
 import { workspaceAreaProps } from "../lib/workspaceFocus";
-import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
+import { Outlet, createFileRoute, redirect, useLocation, useRouter } from "@tanstack/react-router";
 import { baskule } from "../baskule/flags"; // baskule:
 import {
   firstBaskuleSettingsPath,
@@ -24,6 +24,7 @@ import { useEnvironments } from "../state/environments";
 import { SettingsScopeNotice } from "../components/settings/SettingsScopeNotice";
 import { SETTINGS_DEVICE_ONLY_PATHS } from "../components/settings/SettingsScopeSentence";
 import { SettingsPageContainer } from "../components/settings/settingsLayout";
+import { useRenderedSettingsPathname } from "../components/settings/useRenderedSettingsPathname";
 import {
   retainSettingsScope,
   validateSettingsRouteSearch,
@@ -57,7 +58,10 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
   const { environments } = useEnvironments();
   const gt = useGT();
   const m = useMessages();
-  const hash = useLocation({ select: (location) => location.hash });
+  // A pending navigation's hash targets the page still loading, not the one on screen.
+  const hash = useLocation({
+    select: (location) => (location.pathname === pathname ? location.hash : ""),
+  });
   const searchTarget = getSettingsSearchTargetScope(hash);
   if (baskule.hideSettings && isBaskuleOwnSettingsPage(pathname)) return children;
   const targetAvailability = searchTarget?.requiresThreadAutoSettlement
@@ -132,10 +136,11 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
 function SettingsContentLayout() {
   const gt = useGT();
   const contentArea = workspaceAreaProps("settings", 1, gt("Settings content"));
-  const location = useLocation();
+  const navPathname = useLocation({ select: (location) => location.pathname });
+  const pathname = useRenderedSettingsPathname();
   const { search, environment } = useSettingsScope();
   const contentScopeKey =
-    location.pathname === "/settings/diagnostics" || location.pathname === "/settings/providers"
+    pathname === "/settings/diagnostics" || pathname === "/settings/providers"
       ? environment?.environmentId
       : JSON.stringify(search);
   const [restoreSignal, setRestoreSignal] = useState(0);
@@ -147,7 +152,7 @@ function SettingsContentLayout() {
         {baskule.hideSettings ? (
           <BaskuleSettingsNav />
         ) : (
-          <SettingsSidebarNav pathname={location.pathname} />
+          <SettingsSidebarNav pathname={navPathname} />
         )}
         <div {...contentArea} className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="flex h-12 shrink-0 items-center gap-3 border-b ps-5 pe-2">
@@ -156,10 +161,10 @@ function SettingsContentLayout() {
                 <T>Settings</T>
               </span>
             ) : (
-              <SettingsBreadcrumb pathname={location.pathname} />
+              <SettingsBreadcrumb pathname={pathname} />
             )}
             <div className="ms-auto flex shrink-0 items-center gap-1">
-              {!baskule.hideSettings && location.pathname === "/settings/general" ? (
+              {!baskule.hideSettings && pathname === "/settings/general" ? (
                 <RestoreDeviceDefaultsButton
                   onRestored={() => setRestoreSignal((value) => value + 1)}
                 />
@@ -169,7 +174,7 @@ function SettingsContentLayout() {
           </header>
           {baskule.hideSettings ? <BaskuleSettingsTabs /> : null}
           <div key={`${contentScopeKey}:${restoreSignal}`} className="min-h-0 flex flex-1 flex-col">
-            <SettingsScopeBoundary pathname={location.pathname}>
+            <SettingsScopeBoundary pathname={pathname}>
               <Outlet />
             </SettingsScopeBoundary>
           </div>
@@ -182,7 +187,8 @@ function SettingsContentLayout() {
 function SettingsRouteLayout() {
   const rawSearch = Route.useSearch();
   const navigate = Route.useNavigate();
-  const pathname = useLocation({ select: (location) => location.pathname });
+  const router = useRouter();
+  const pathname = useRenderedSettingsPathname();
   return (
     <SettingsScopeProvider
       search={rawSearch}
@@ -190,7 +196,9 @@ function SettingsRouteLayout() {
       onChange={(next) => {
         // Send every axis so retain middleware recognizes "all" as an explicit target.
         void navigate({
-          to: pathname,
+          // Read at call time: subscribing would hand every scope consumer a new context value on
+          // each click. A pending navigation's target wins over the page still on screen.
+          to: router.state.location.pathname,
           search: () => ({
             project: next.project,
             machine: next.machine,

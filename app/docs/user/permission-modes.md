@@ -1,28 +1,19 @@
 # Permission modes
 
-Permission modes control when an agent needs your approval to act. Choose a mode in the message
-composer; it applies to that thread. A new thread names its mode under the composer. In a thread
-on your default mode, open the model picker and choose **Permissions** at its bottom, or press
-`mod+shift+a`. A thread on another mode shows the mode next to the model.
+Permission modes control when an agent must ask for your approval before running commands or editing files. Set the mode per thread from the composer (`mod+shift+a` or the model picker's **Permissions** menu).
 
-Set the default for new threads in **Settings → Threads → New threads → Permissions**.
-Projects can override the environment default. New threads use this setting rather than the
-mode of the thread you were viewing. The initial default is **Full access**; existing threads
-and modes you choose in a draft keep their permissions.
+Configure the default for new threads in **Settings → Threads → New threads → Permissions** (default: **Full access**; projects can override). Administrators can cap available modes with a [managed policy](./managed-policy.md#permission-modes).
 
-| Mode                  | Behavior                                                                              |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| **Supervised**        | Requests approval for commands and file changes.                                      |
-| **Auto-accept edits** | Approves file edits automatically; other actions can still require approval.          |
-| **Auto**              | Uses the provider's automatic review to approve routine actions and ask about others. |
-| **Full access**       | Allows commands and edits without approval prompts.                                   |
+| Mode                  | Behavior                                                                                  |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| **Supervised**        | Requests approval for commands and file changes.                                          |
+| **Auto-accept edits** | Approves file edits automatically; commands and other actions may still ask.              |
+| **Auto**              | Uses the provider's automatic review to approve routine actions and ask about risky ones. |
+| **Full access**       | Runs commands and edits without approval prompts.                                         |
 
-An administrator can cap the modes available on a machine with a
-[managed policy](./managed-policy.md#permission-modes); modes above the cap show who manages them.
+Permission modes never stop an agent from asking clarifying questions. Subagent approval requests appear in the parent conversation with the subagent's name so you can approve without switching threads.
 
-Approve or reject requests in the conversation to let the agent continue. Permission modes do
-not prevent the agent from asking questions about the task. Subagent approval requests appear in
-the parent conversation with the subagent's name, so you can respond without switching threads.
+## Git push hooks below Full access
 
 ## OpenCode permissions
 

@@ -1,10 +1,9 @@
 # Usage and limits
 
-Open **Usage** from the sidebar or the command palette, or press `mod+u` on web and
-desktop when the terminal is not focused. Press it again to close Usage. Customize **Usage: Toggle** in
-**Settings → Keybindings**.
+Track token usage, cache hit rates, estimated API-equivalent costs, and pooled subscription quotas across all connected environments.
 
-On mobile, choose **Usage** in the workspace navigation.
+- **Open Usage**: Click **Usage** in the sidebar, press `mod+u` (web/desktop outside terminals), or pick **Usage** on mobile.
+- **Quick shortcuts** (web/desktop on Usage): `C` (Cost), `T` (Tokens), `L` (Limits), `mod+Shift+1/2/3/4` (24h / 7d / 30d / 90d), `Esc` (back).
 
 ## Understand your usage
 

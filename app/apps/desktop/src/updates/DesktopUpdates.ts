@@ -250,7 +250,8 @@ function redactMessage(message: string): string {
       /\b[\w-]*(?:token|password|secret|credential|api[_-]?key)[\w-]*\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
       "[redacted credential]",
     )
-    .slice(0, 512);
+    .slice(0, 512)
+    .replace(/\p{Surrogate}$/u, "");
 }
 
 function summarizeCause(cause: unknown, depth: number): string {
@@ -287,7 +288,9 @@ function summarizeCause(cause: unknown, depth: number): string {
 
 export function describeUpdateErrorCause(cause: unknown): string {
   try {
-    return summarizeCause(cause, 0).slice(0, 1024);
+    return summarizeCause(cause, 0)
+      .slice(0, 1024)
+      .replace(/\p{Surrogate}$/u, "");
   } catch {
     return "UnknownError";
   }
@@ -379,13 +382,6 @@ function getAutoUpdateDisabledReason(args: {
   }
   return null;
 }
-
-const trackLabel = (channel: DesktopUpdateChannel) =>
-  channel === "nightly" ? "Nightly" : "Stable";
-
-// Clients localize `trackMismatch`; this English text serves older renderers and remote reports.
-const trackMismatchMessage = (build: DesktopUpdateChannel, saved: DesktopUpdateChannel) =>
-  `This ${trackLabel(build)} build can't update from the ${trackLabel(saved)} track on its own. Switch the update track back to ${trackLabel(build)}, or use Review beside Update track to retry the switch to ${trackLabel(saved)}.`;
 
 function isArm64HostRunningIntelBuild(runtimeInfo: DesktopRuntimeInfo): boolean {
   return runtimeInfo.hostArch === "arm64" && runtimeInfo.appArch === "x64";

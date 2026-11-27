@@ -1,3 +1,4 @@
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Spinner } from "~/components/ui/spinner";
 import {
   AlertTriangleIcon,
@@ -46,7 +47,6 @@ import { ManagedControl, ManagedNotice } from "../ManagedPolicy";
 import { managedInstanceLocks, useManagedPolicy } from "../../state/managedPolicy";
 import { disallowedProviderMessage, isManagedDriverAllowed } from "@t3tools/contracts";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type {
   ProviderClientDefinition,
   ProviderEnvironmentField,
@@ -77,6 +77,7 @@ import {
   getProviderVersionLabel,
   providerAuthLabel,
 } from "./providerStatus";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 
 const ENVIRONMENT_VARIABLE_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
@@ -88,12 +89,7 @@ function ProviderStatusDiagnostic({
   children: ReactElement;
 }) {
   if (!detail) return children;
-  return (
-    <Tooltip>
-      <TooltipTrigger render={children} />
-      <TooltipPopup side="top">{detail}</TooltipPopup>
-    </Tooltip>
-  );
+  return <SharedTooltipTrigger render={children} label={detail} />;
 }
 
 let environmentVariableDraftId = 0;
@@ -551,26 +547,26 @@ function ProjectOverrideInheritance({
   ];
   return (
     <Popover>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger
-              render={
-                <Button
-                  size="icon-micro"
-                  variant="ghost-muted"
-                  aria-label={gt("Overridden for this project. Show where this value comes from")}
-                />
-              }
-            />
-          }
-        >
-          <LayersIcon className="size-3 text-primary" />
-        </TooltipTrigger>
-        <TooltipPopup side="top">
-          <T>Overridden for this project</T>
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <PopoverTrigger
+            render={
+              <Button
+                size="icon-micro"
+                variant="ghost-muted"
+                aria-label={gt("Overridden for this project. Show where this value comes from")}
+              />
+            }
+          />
+        }
+        label={
+          <>
+            <T>Overridden for this project</T>
+          </>
+        }
+      >
+        <LayersIcon className="size-3 text-primary" />
+      </SharedTooltipTrigger>
       <PopoverPopup align="end" width="md" padding="none">
         <ol role="list" className="px-3 py-2.5 text-sm">
           {layers.map((layer) => (
@@ -938,39 +934,35 @@ export function ProviderInstanceCard({
     );
   const versionAdvisoryNode = versionAdvisory ? (
     <Popover>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger
-              render={
-                <Button
-                  type="button"
-                  size={mode === "list" ? "icon-micro" : "icon-xs"}
-                  variant="ghost-muted"
-                  className={mode === "list" ? "pointer-events-auto relative shrink-0" : undefined}
-                  aria-label={gt("{status}, view details", {
-                    status: updateProgress ? gt("Updating") : versionAdvisory.title,
-                  })}
-                >
-                  {updateProgress ? (
-                    <Spinner tone="muted" {...(mode === "list" ? { size: "sm" as const } : {})} />
-                  ) : (
-                    <VersionAdvisoryIcon
-                      className={cn(
-                        mode === "list" && "size-3.5",
-                        hasCompatibilityWarning && "text-warning",
-                      )}
-                    />
-                  )}
-                </Button>
-              }
-            />
-          }
-        />
-        <TooltipPopup side="top">
-          {updateProgress ? gt("Updating") : versionAdvisory.title}
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <PopoverTrigger
+            render={
+              <Button
+                type="button"
+                size={mode === "list" ? "icon-micro" : "icon-xs"}
+                variant="ghost-muted"
+                className={mode === "list" ? "pointer-events-auto relative shrink-0" : undefined}
+                aria-label={gt("{status}, view details", {
+                  status: updateProgress ? gt("Updating") : versionAdvisory.title,
+                })}
+              >
+                {updateProgress ? (
+                  <Spinner tone="muted" {...(mode === "list" ? { size: "sm" as const } : {})} />
+                ) : (
+                  <VersionAdvisoryIcon
+                    className={cn(
+                      mode === "list" && "size-3.5",
+                      hasCompatibilityWarning && "text-warning",
+                    )}
+                  />
+                )}
+              </Button>
+            }
+          />
+        }
+        label={updateProgress ? gt("Updating") : versionAdvisory.title}
+      />
       <PopoverPopup side="bottom" align="end" width="md" aria-label={versionAdvisory.title}>
         <div className="grid min-w-0 gap-3">
           <div className="grid gap-0.5">
@@ -1028,25 +1020,25 @@ export function ProviderInstanceCard({
               <code className="min-w-0 flex-1 truncate font-mono text-2xs text-foreground">
                 {updateCommand}
               </code>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      size="icon-xs"
-                      variant="ghost-muted"
-                      className="shrink-0"
-                      onClick={() => copyToClipboard(updateCommand, { providerName: displayName })}
-                      aria-label={gt("Copy update command")}
-                    >
-                      <CopyIcon className="size-3" />
-                    </Button>
-                  }
-                />
-                <TooltipPopup side="top">
-                  <T>Copy command</T>
-                </TooltipPopup>
-              </Tooltip>
+              <SharedTooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost-muted"
+                    className="shrink-0"
+                    onClick={() => copyToClipboard(updateCommand, { providerName: displayName })}
+                    aria-label={gt("Copy update command")}
+                  >
+                    <CopyIcon className="size-3" />
+                  </Button>
+                }
+                label={
+                  <>
+                    <T>Copy command</T>
+                  </>
+                }
+              />
             </div>
           ) : null}
         </div>
