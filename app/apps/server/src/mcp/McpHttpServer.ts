@@ -24,6 +24,7 @@ import {
   AuthSessionId,
   DeviceToolError,
   OrchestratorMcpFailure,
+  OrchestratorMcpRequestSecretResult,
   PreviewAutomationError,
   type RunId,
   ThreadId,
@@ -976,6 +977,13 @@ const withBaskuleToolPolicy = Effect.fnUntraced(function* <A, E, R>(
           description:
             "Ask for one secret in a private card. Returns a one-use `secretRef` for a T3 tool. Use `url` for a sign-in or setup link.",
           inputSchema: { ...tool.inputSchema, properties },
+          outputSchema: Tool.getJsonSchemaFromSchema(
+            Schema.Union(
+              OrchestratorMcpRequestSecretResult.members.filter(
+                ({ fields }) => !("file" in fields) && !("files" in fields),
+              ),
+            ),
+          ),
         }),
       });
     }),

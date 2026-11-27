@@ -79,6 +79,19 @@ it.effect("advertises the secretRef flow in hosted spaces", () => {
       "timeoutMs",
       "url",
     ]);
+    expect(request?.outputSchema).toMatchObject({
+      anyOf: [
+        { properties: { secretRef: { type: "string" } }, required: ["status", "secretRef"] },
+        {
+          properties: {
+            status: { enum: ["declined", "cancelled", "timed_out"] },
+            note: expect.any(Object),
+          },
+          required: ["status"],
+        },
+      ],
+    });
+    expect(JSON.stringify(request?.outputSchema)).not.toMatch(/"files?":/);
   }).pipe(
     Effect.provide(
       registration.pipe(
