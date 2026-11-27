@@ -1,7 +1,16 @@
-import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerSettings,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { mapSettingsSecrets, SECRET_REDACTED } from "./settingsSecrets.ts";
+import {
+  mapSettingsSecrets,
+  SECRET_REDACTED,
+  withoutRedirectedSecrets,
+} from "./settingsSecrets.ts";
 
 describe("released forge credential compatibility", () => {
   it("redacts saved credentials using the existing secret-store keys after adapters are removed", () => {
@@ -32,5 +41,31 @@ describe("released forge credential compatibility", () => {
       gitcafe: { token: SECRET_REDACTED },
     });
     expect(settings.sourceControlHosts.github.tokens["GitHub.Example"]).toBe("fake-gh-token");
+  });
+});
+
+it("keeps a saved OpenCode password at its configured destination", () => {
+  const id = ProviderInstanceId.make("opencode-remote");
+  const settings = (serverUrl: string, serverPassword: string): ServerSettings => ({
+    ...DEFAULT_SERVER_SETTINGS,
+    providerInstances: {
+      [id]: {
+        driver: ProviderDriverKind.make("opencode"),
+        config: { serverUrl, serverPassword },
+      },
+    },
+  });
+  const current = settings("https://agent.example/session/", "saved-password");
+  const read = (serverUrl: string, password: string) =>
+    withoutRedirectedSecrets(current, settings(serverUrl, password)).providerInstances[id]?.config;
+
+  expect(read("https://agent.example/session", SECRET_REDACTED)).toMatchObject({
+    serverPassword: SECRET_REDACTED,
+  });
+  expect(read("https://agent.example/different", SECRET_REDACTED)).toMatchObject({
+    serverPassword: "",
+  });
+  expect(read("https://agent.example/different", "replacement")).toMatchObject({
+    serverPassword: "replacement",
   });
 });

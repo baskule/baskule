@@ -56,7 +56,6 @@ import * as ServerSettingsModule from "../serverSettings.ts";
 import { readProviderStatusCache, resolveProviderStatusCachePath } from "./providerStatusCache.ts";
 import { COMPACT_SLASH_COMMAND } from "@t3tools/provider-core/server/snapshotProbe";
 import type {
-  AnyProviderDriver,
   ProviderInstance,
   ProviderWorkspaceSnapshot,
 } from "@t3tools/provider-core/server/driver";
@@ -847,6 +846,7 @@ it.layer(
           ...previousProvider,
           checkedAt: "2026-10-30T00:01:00.000Z",
           models: [previousProvider.models[0]],
+          ...(driver === "claudeAgent" ? { modelsIncomplete: true } : {}),
         } satisfies ServerProvider;
 
         assert.deepStrictEqual(
@@ -855,6 +855,49 @@ it.layer(
         );
       },
     );
+
+    it("drops a Claude gateway model the same gateway no longer lists (#43603)", () => {
+      const auth = {
+        status: "authenticated",
+        type: "customEndpoint",
+        label: "Custom API endpoint",
+        endpoint: "http://127.0.0.1:15721",
+      } as const;
+      const previousProvider = {
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: ProviderDriverKind.make("claudeAgent"),
+        status: "ready",
+        enabled: true,
+        installed: true,
+        auth,
+        checkedAt: "2026-11-25T00:00:00.000Z",
+        version: "2.1.332",
+        models: [
+          { slug: "claude-sonnet-5-5", name: "Sonnet 5.5", isCustom: false, capabilities: null },
+          {
+            slug: "gw--model:free[1m]",
+            name: "gw--model:free",
+            isCustom: false,
+            capabilities: null,
+          },
+          { slug: "gw--model:free", name: "gw--model:free", isCustom: false, capabilities: null },
+        ],
+        slashCommands: [],
+        skills: [],
+      } as const satisfies ServerProvider;
+      const refreshedProvider = {
+        ...previousProvider,
+        checkedAt: "2026-11-26T00:00:00.000Z",
+        models: [previousProvider.models[0], previousProvider.models[1]],
+      } satisfies ServerProvider;
+
+      assert.deepStrictEqual(
+        ProviderRegistry.mergeProviderSnapshot(previousProvider, refreshedProvider).models.map(
+          (model) => model.slug,
+        ),
+        ["claude-sonnet-5-5", "gw--model:free[1m]"],
+      );
+    });
 
     it("retains stale OpenCode models when a refresh fails or lists none", () => {
       const previousProvider = {
@@ -1889,6 +1932,28 @@ it.layer(
         displayName = "Account B";
         yield* PubSub.publish(changes, undefined);
         assert.isTrue(Option.isSome(yield* Fiber.join(relabelled)));
+      }),
+    );
+
+    it.effect("reports a provider's mode limits, and none where it has no say", () =>
+      Effect.gen(function* () {
+        const h = yield* makeWorkspaceRescanHarness;
+        const limitsOf = (id: ProviderInstanceId) =>
+          h.registry.runtimeModeLimits({ instanceId: id, scanCwd: "/workspace" });
+        assert.deepEqual(yield* limitsOf(h.first.instance.instanceId), []);
+        assert.deepEqual(yield* limitsOf(ProviderInstanceId.make("removed")), []);
+        yield* Ref.set(h.instances, [
+          {
+            ...h.first.instance,
+            runtimeModeLimitsForCwd: (cwd) =>
+              Effect.succeed(
+                cwd === "/workspace" ? [{ mode: "auto", reason: "project-settings" }] : [],
+              ),
+          },
+        ]);
+        assert.deepEqual(yield* limitsOf(h.first.instance.instanceId), [
+          { mode: "auto", reason: "project-settings" },
+        ]);
       }),
     );
 

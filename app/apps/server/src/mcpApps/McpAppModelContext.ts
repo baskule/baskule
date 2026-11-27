@@ -19,6 +19,8 @@ export interface McpAppModelContextEntry {
   readonly server: string;
   readonly tool: string;
   readonly text: string;
+  /** ISO time the app last set the note. */
+  readonly updatedAt: string;
 }
 
 export class McpAppModelContext extends Context.Service<
@@ -58,6 +60,7 @@ export const forProvider = Effect.fn("McpAppModelContext.forProvider")(function*
     // the context in.
     key: `mcp_app_${entry.itemId.replace(/[^\w.-]/g, "_")}`,
     text: entry.text,
+    updatedAt: entry.updatedAt,
   }));
 });
 
@@ -110,15 +113,30 @@ export const layer = Layer.effect(
               FROM orchestration_v2_projection_turn_items AS ti
               WHERE ti.thread_id = b.thread_id
                 AND ti.type = 'user_message'
-                AND (
-                  ti.run_id = b.run_id
-                  OR json_extract(ti.payload_json, '$.messageId') = json_extract(b.payload_json, '$.userMessageId')
+                AND ti.turn_item_id = COALESCE(
+                  (
+                    SELECT prompt.turn_item_id
+                    FROM orchestration_v2_projection_turn_items AS prompt
+                    WHERE prompt.thread_id = b.thread_id
+                      AND prompt.type = 'user_message'
+                      AND prompt.run_id = b.run_id
+                    ORDER BY prompt.ordinal
+                    LIMIT 1
+                  ),
+                  (
+                    SELECT prompt.turn_item_id
+                    FROM orchestration_v2_projection_turn_items AS prompt
+                    WHERE prompt.thread_id = b.thread_id
+                      AND prompt.type = 'user_message'
+                      AND json_extract(prompt.payload_json, '$.messageId') = json_extract(b.payload_json, '$.userMessageId')
+                    ORDER BY prompt.ordinal
+                    LIMIT 1
+                  )
                 )
-              ORDER BY ti.run_id = b.run_id DESC, ti.ordinal
-              LIMIT 1
             ) IS NULL
         )
-        SELECT context.item_id AS "itemId", context.server, context.tool, context.text
+        SELECT context.item_id AS "itemId", context.server, context.tool, context.text,
+          context.updated_at AS "updatedAt"
         FROM mcp_app_model_context AS context
         CROSS JOIN boundary
         JOIN orchestration_v2_projection_turn_items AS item

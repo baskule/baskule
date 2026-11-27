@@ -94,6 +94,7 @@ function makeTestAdapter(input: {
   readonly rejectedNativeThreads?: Ref.Ref<ReadonlySet<string>>;
   readonly failedRunOrdinals?: ReadonlySet<number>;
   readonly promptDroppedRunOrdinals?: ReadonlySet<number>;
+  readonly nativeTurnKept?: (nativeTurnId: string) => boolean;
   readonly brokenRunOrdinals?: ReadonlySet<number>;
   readonly interruptedRunOrdinals?: ReadonlySet<number>;
   readonly cancelledRunOrdinals?: ReadonlySet<number>;
@@ -175,6 +176,12 @@ function makeTestAdapter(input: {
           ...(input.canReuseContextUsage === undefined
             ? {}
             : { canReuseContextUsage: input.canReuseContextUsage }),
+          ...(input.nativeTurnKept === undefined
+            ? {}
+            : {
+                nativeTurnKept: ({ nativeTurnId }) =>
+                  Effect.succeed(input.nativeTurnKept!(nativeTurnId)),
+              }),
           ...(input.backgroundWork === undefined
             ? {}
             : {

@@ -174,7 +174,8 @@ function formatRunAtTime(value: Date): string {
 
 function timePickerValue(value: string): Date {
   const [hours, minutes] = value.split(":").map(Number);
-  const time = new Date();
+  // Native pickers read local hours, and 2000-01-01 has no DST change in any zone, unlike today.
+  const time = new Date(2000, 0, 1);
   time.setHours(
     Number.isInteger(hours) ? (hours ?? 9) : 9,
     Number.isInteger(minutes) ? (minutes ?? 0) : 0,

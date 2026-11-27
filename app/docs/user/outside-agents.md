@@ -100,10 +100,9 @@ can discover the sign-in settings. Approve the resulting sign-in page as describ
 Clients without OAuth support cannot connect. This grants access to Baskule tools;
 Baskule executes its own agent threads through OpenCode 2.
 
-## Scripts on the host
+## Host scripts (`t3 thread`)
 
-On the machine that runs the environment, `t3 thread` uses the same tools
-without a sign-in:
+On the server machine itself, drive threads directly without OAuth:
 
 ```sh
 id=$(t3 thread start . "Find why the tests are slow")
@@ -112,26 +111,5 @@ t3 thread show "$id"
 t3 thread list
 ```
 
-`.` means the project that contains the current folder, or a git worktree of
-its repository; a project id also works. A new thread uses the project's
-default model and permission mode, and runs in the project folder unless you
-pass `--worktree <base-branch>`. Its title is the message's first line, or
-`--title`; add `--generate-title` to have it named from the message, as threads
-started in the app are. `send` never interrupts: a busy thread gets the message
-as its next turn. Pass `-` as the message to read it from stdin.
-
-To choose the model, pass `--provider <instance-id> --model <slug>`. Add
-`--option id=value` for each model option. For reasoning effort, Codex uses
-`--option reasoningEffort=high`, while Claude uses `--option effort=high`.
-Option ids and allowed values depend on the provider and model; use those
-reported by `orchestrator_capabilities`. `true` and `false` set on/off options.
-
-`--wait` prints the agent's reply. It exits 1 when the run fails or stops, and
-2 when the agent waits for an answer you give in the app. Add `--json` for a
-result that always includes the thread id.
-
-## Remove an agent
-
-Approved agents appear under **Settings → Sharing & access** like other clients.
-Revoke one there to cut off its access immediately. A sign-in lasts 30 days;
-after that the agent asks you to approve it again.
+- Pass `--worktree <base-branch>`, `--title` / `--generate-title`, `--provider <id> --model <slug>`, `--option id=value` (e.g. `reasoningEffort=high` for Codex, `effort=high` for Claude), or `-` to read the prompt from stdin.
+- `--wait` prints the reply and exits `1` on failure/stop or `2` when waiting for user input. Add `--json` for structured output including the thread ID.

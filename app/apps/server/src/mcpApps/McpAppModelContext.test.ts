@@ -63,7 +63,7 @@ layer("McpAppModelContext", (it) => {
     }),
   );
 
-  it.effect("drops pre-/clear MCP app notes, but not for a restarted scheduled fresh run", () =>
+  it.effect("drops pre-/clear MCP app notes and preserves notes across scheduled fresh runs", () =>
     Effect.gen(function* () {
       yield* runMigrations();
       const sql = yield* SqlClient.SqlClient;
@@ -77,7 +77,8 @@ layer("McpAppModelContext", (it) => {
           ('run-before-clear', ${clearedThread}, 1, 'codex', 'completed', '2026-01-01', '{"startedAt":"2026-01-01"}'),
           ('run-clear', ${clearedThread}, 2, 'codex', 'completed', '2026-01-02', '{"freshContext":true,"startedAt":"2026-01-02","userMessageId":"msg-clear"}'),
           ('run-after-clear', ${clearedThread}, 3, 'codex', 'completed', '2026-01-03', '{"startedAt":"2026-01-03"}'),
-          ('run-scheduled-fresh', ${clearedThread}, 4, 'codex', 'completed', '2026-01-04', '{"freshContext":true,"startedAt":"2026-01-04","userMessageId":"msg-restart"}')
+          ('run-scheduled-fresh', ${clearedThread}, 4, 'codex', 'completed', '2026-01-04', '{"freshContext":true,"startedAt":"2026-01-04","userMessageId":"msg-restart"}'),
+          ('run-scheduled-legacy', ${clearedThread}, 5, 'codex', 'completed', '2026-01-05', '{"freshContext":true,"startedAt":"2026-01-05","userMessageId":"msg-scheduled"}')
       `;
       yield* sql`
         INSERT INTO orchestration_v2_projection_turn_items

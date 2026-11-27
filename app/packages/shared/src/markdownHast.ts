@@ -2,7 +2,11 @@ import { isLocalEditorFileUrl, LOCAL_FILE_LINK_SCHEMES } from "@t3tools/contract
 import type { Root } from "hast";
 import { defaultSchema, sanitize, type Schema } from "hast-util-sanitize";
 
-import { isWindowsDrivePathHref, normalizeMarkdownLinkDestination } from "./markdownLinks.ts";
+import {
+  isWindowsDrivePathHref,
+  normalizeMarkdownLinkDestination,
+  parseMarkdownSandboxFileLink,
+} from "./markdownLinks.ts";
 import { THREAD_LINK_PROTOCOL } from "./threadLinks.ts";
 
 type MarkdownImageHastNode = {
@@ -53,6 +57,10 @@ function markStandaloneImages(node: MarkdownImageHastNode) {
 
 const COLOR_SCHEME_MEDIA = /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/i;
 
+function normalizeHttpScheme(url: string): string {
+  return url.replace(/^https?:/i, (scheme) => scheme.toLowerCase());
+}
+
 /**
  * The renderer resolves an `<img>`'s `src` (workspace files, host media) but never a `<source>`'s
  * `srcset`, which would load unresolved whenever its media matched. A color-scheme source moves
@@ -95,6 +103,10 @@ export function rehypePreserveImageSourceMeta() {
           ...(typeof src === "string" && isWindowsDrivePathHref(src) ? { dataLocalSrc: src } : {}),
           ...(typeof title === "string" ? { dataMarkdownTitle: title } : {}),
         };
+        for (const key of ["src", "dataDarkSrc", "dataLightSrc"]) {
+          const value = node.properties[key];
+          if (typeof value === "string") node.properties[key] = normalizeHttpScheme(value);
+        }
       }
       node.children?.forEach(visit);
     };
@@ -106,8 +118,11 @@ export function rehypePreserveImageSourceMeta() {
 
 const IMAGE_SRC_PROTOCOLS = [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"];
 
-// The sanitizer compares schemes case-sensitively, so lowercase accepted editor links first.
-function normalizeLocalEditorHref(href: string): string {
+// The sanitizer compares schemes case-sensitively, so lowercase accepted file link schemes first.
+function normalizeLocalFileHref(href: string): string {
+  if (/^sandbox:/i.test(href)) {
+    return parseMarkdownSandboxFileLink(href) ? href.replace(/^sandbox:/i, "sandbox:") : "";
+  }
   try {
     const url = new URL(href);
     return isLocalEditorFileUrl(url) ? url.href : href;
@@ -117,12 +132,12 @@ function normalizeLocalEditorHref(href: string): string {
   }
 }
 
-export function rehypeNormalizeLocalEditorLinks() {
+export function rehypeNormalizeLocalFileLinks() {
   return (tree: MarkdownImageHastNode) => {
     const visit = (node: MarkdownImageHastNode) => {
       const href = node.properties?.href;
       if (node.type === "element" && node.tagName === "a" && typeof href === "string") {
-        const normalized = normalizeLocalEditorHref(href);
+        const normalized = normalizeLocalFileHref(normalizeHttpScheme(href));
         if (normalized !== href) node.properties = { ...node.properties, href: normalized };
       }
       node.children?.forEach(visit);
@@ -161,6 +176,7 @@ export const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
     href: [
       ...(defaultSchema.protocols?.href ?? []),
       "file",
+      "sandbox",
       "t3-citation",
       "t3-context",
       THREAD_LINK_PROTOCOL,

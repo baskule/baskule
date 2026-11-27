@@ -648,6 +648,10 @@ export interface ProviderSettingsFormAnnotation {
   readonly clearWhenEmpty?: "omit" | "persist" | undefined;
 
   readonly options?: ReadonlyArray<ProviderSettingsFormOption> | undefined;
+  /** Shows the field only while the named select field holds one of these values. */
+  readonly visibleWhen?:
+    | { readonly field: string; readonly values: ReadonlyArray<string> }
+    | undefined;
 }
 
 export function secretSettingsFields(schema: {

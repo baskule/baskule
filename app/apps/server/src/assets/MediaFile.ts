@@ -44,6 +44,14 @@ export interface OpenMediaFile {
   readonly info: HostBigIntStats;
 }
 
+/** Fall back to the host's JS resolver when native resolution cannot name a Windows drive. */
+export const realPathWithoutNativeResolver = Effect.fn("MediaFile.realPathWithoutNativeResolver")(
+  function* (filePath: string) {
+    const fs = yield* HostFileSystem;
+    return yield* Effect.promise(() => fs.realpathLikeFileSystem(filePath).catch(() => null));
+  },
+);
+
 export const openMediaFile = Effect.fn("openMediaFile")(function* (
   filePath: string,
   identity?: { readonly device: string; readonly inode: string },

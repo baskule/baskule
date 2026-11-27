@@ -5,7 +5,7 @@ Keep `LICENSE` and third-party notices. [Source provenance](../source-provenance
 records the upstream source and licenses. The root [build guide](../docs/building.md)
 and [development workflow](../docs/development-workflow.md) cover the complete repository.
 
-Upstream base: T3 Code `v0.1.12` (`ca81b7b97a1c4b91e5ac25768d0f6629f37732fd`).
+Upstream base: T3 Code `v0.1.13` (`bc0f04da94f64b5e487c598761a43b4cf06b2ac9`).
 Update this line with each upstream update.
 
 ## Build and run
@@ -101,6 +101,8 @@ Tool calls default to hidden through the shared client visibility setting. Expli
 choices are preserved, including settings saved by 0.5.3. The working shelf defaults off
 so a chat stays in place when the user sends a message. Upstream screen-reader announcement levels
 remain available. Web, desktop, and mobile use General Translation with the released locales plus Dutch and Italian.
+The upstream performance runners require forge fixtures and non-Baskule providers.
+Baskule keeps its render report and repository performance journeys.
 
 ## Authentication and telemetry
 
@@ -189,7 +191,8 @@ the stream. The SpaceCell disposal test checks that every stream open before dis
 by comparing stream IDs. A replacement subscription can appear on the new runtime.
 Hosted OpenCode uses the installation's catalog in every location. Catalog refreshes keep their
 one-shot reads and wait for a workspace scan when requested. The hosted driver skips upstream's
-persistent background catalog and location-scan subscriptions.
+persistent background catalog and location-scan subscriptions. Standalone OpenCode refreshes
+workspace skills when the server reports that they changed.
 
 OpenCode compacts automatically. Set each model's real context limit in **Admin > AI > Models**.
 There is no manual `/compact` action or idle compaction worker.
@@ -197,7 +200,7 @@ There is no manual `/compact` action or idle compaction worker.
 ## Take a new upstream release
 
 Follow [Upgrade the T3 Code base](../docs/upstream-upgrades.md).
-The current [integration review](../docs/upstream-v0.1.12-integration.md) records the release
+The current [integration review](../docs/upstream-v0.1.13-integration.md) records the release
 decisions and verification boundary.
 Start from the complete new stable upstream release and selectively reapply the
 Baskule behavior still needed from the latest `origin/main`. Adapt retained changes
@@ -246,7 +249,7 @@ journey after changes. The startup/retention design is tracked in
 
 The application migration head is **116**. The manifest skips 065 (Codex), 070–072
 (linked environments), 097, 103 and 109 (issue trackers), 108 (agent feedback),
-and 110, 113–115 and 117 (workflows). Preserve recorded IDs and omissions.
+and 110, 113–115 and 117–119 (workflows). Preserve recorded IDs and omissions.
 A future implementation of an excluded feature must add any required schema
 above the then-current head. The migrator skips lower IDs even when absent from
 the ledger. Do not add empty migrations or reuse a recorded ID.
@@ -256,8 +259,8 @@ indexes for turn and history reads, worktree layout approval storage, and fork
 history membership. The hosted policy limits project mutation to pin and archive.
 The client and server compatibility floor remains 0.5.4.
 
-The retention worker physically purges previously deleted chats on its normal
-maintenance schedule. Take an installation backup before upgrading. The backup
+The retention worker physically purges previously deleted chats. The first
+maintenance pass after this upgrade starts without waiting for the old compaction timestamp. Take an installation backup before upgrading. The backup
 preserves the previous layout and any deleted chat data that had yet to be
 purged.
 

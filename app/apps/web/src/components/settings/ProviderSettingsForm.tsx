@@ -156,8 +156,10 @@ const PACKAGE_FIELD_TEXT: ReadonlyMap<string, string> = new Map([
     ),
   ],
   [
-    "Google accounts use your subscription; API keys and Agent Platform bill usage.",
-    msg("Google accounts use your subscription; API keys and Agent Platform bill usage."),
+    "Google account and Gemini Enterprise use your existing plan. Gemini API key and Agent Platform charge per use to your key or Google Cloud project.",
+    msg(
+      "Google account and Gemini Enterprise use your existing plan. Gemini API key and Agent Platform charge per use to your key or Google Cloud project.",
+    ),
   ],
   [
     "Gemini or Vertex AI express key. Stored separately on the host.",
@@ -253,6 +255,19 @@ function packageFieldText(text: string, resolve: MessageResolver): string {
   return entry === undefined ? text : resolve(entry);
 }
 
+/** An unset select shows, and acts as, its first option. */
+function readSelectValue(
+  config: unknown,
+  key: string,
+  options: ReadonlyArray<ProviderSettingsFormOption> | undefined,
+): string {
+  return readProviderConfigString(config, key) || (options?.[0]?.value ?? "");
+}
+
+/**
+ * Without a `value`, lists every field. With one, a `visibleWhen` field is hidden only while empty:
+ * a leftover value still reaches the server, so it stays visible and clearable.
+ */
 export function deriveProviderSettingsFields(
   definition: SettingsFormDefinition,
   value?: unknown,
@@ -410,7 +425,7 @@ function ProviderSettingsSelect({
 }) {
   const options = field.options ?? [];
   const fallback = options[0]?.value ?? "";
-  const current = readProviderConfigString(value, field.key) || fallback;
+  const current = readSelectValue(value, field.key, options);
   const label = options.find((option) => option.value === current)?.label ?? current;
   return (
     <Select

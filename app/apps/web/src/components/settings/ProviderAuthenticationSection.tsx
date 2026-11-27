@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { m } from "~/i18n/messages";
 import {
@@ -24,7 +25,6 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SettingsRow } from "./settingsLayout";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 const ProviderAuthTerminal = lazy(() => import("./ProviderAuthTerminal"));
@@ -228,41 +228,41 @@ export function ProviderAuthenticationSection({
               >
                 <T>Open browser</T>
               </Button>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label={gt("Copy sign-in link")}
-                      size="icon-sm"
-                      variant="ghost-muted"
-                      disabled={disabled}
-                      onClick={() => {
-                        // Copy during the click to retain clipboard activation; consent must still be
-                        // recorded before use.
-                        const copied = writeTextToClipboard(url, {
-                          target: "Provider sign-in link",
-                          unavailableMessage: msg(
-                            "Clipboard API is unavailable while copying Provider sign-in link.",
-                          ),
-                          failureMessage: msg(
-                            "Failed to copy Provider sign-in link to the clipboard.",
-                          ),
-                        });
-                        void (async () => {
-                          await copied;
-                          if (interaction?.type === "browser" && interaction.requiresConsent)
-                            await send({ type: "browser", action: "accept" });
-                        })().catch(() => setError(gt("Could not copy the sign-in link.")));
-                      }}
-                    >
-                      <CopyIcon />
-                    </Button>
-                  }
-                />
-                <TooltipPopup>
-                  <T>Copy sign-in link</T>
-                </TooltipPopup>
-              </Tooltip>
+              <SharedTooltipTrigger
+                render={
+                  <Button
+                    aria-label={gt("Copy sign-in link")}
+                    size="icon-sm"
+                    variant="ghost-muted"
+                    disabled={disabled}
+                    onClick={() => {
+                      // Copy during the click to retain clipboard activation; consent must still be
+                      // recorded before use.
+                      const copied = writeTextToClipboard(url, {
+                        target: "Provider sign-in link",
+                        unavailableMessage: msg(
+                          "Clipboard API is unavailable while copying Provider sign-in link.",
+                        ),
+                        failureMessage: msg(
+                          "Failed to copy Provider sign-in link to the clipboard.",
+                        ),
+                      });
+                      void (async () => {
+                        await copied;
+                        if (interaction?.type === "browser" && interaction.requiresConsent)
+                          await send({ type: "browser", action: "accept" });
+                      })().catch(() => setError(gt("Could not copy the sign-in link.")));
+                    }}
+                  >
+                    <CopyIcon />
+                  </Button>
+                }
+                label={
+                  <>
+                    <T>Copy sign-in link</T>
+                  </>
+                }
+              />
             </>
           ) : null}
           <>

@@ -16,7 +16,7 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { MessageSquareIcon } from "lucide-react";
-import { useState } from "react";
+import { createContext, useState } from "react";
 import { useGT, useMessages } from "gt-react";
 
 import {
@@ -33,9 +33,11 @@ import {
 import { useThreadSearch } from "../state/queries";
 import { primaryServerProvidersAtom } from "../state/server";
 import { threadEnvironment } from "../state/threads";
+import { useStableCallback } from "../hooks/useStableCallback";
 import { useAtomCommand } from "../state/use-atom-command";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { formatRelativeTimeLabel } from "../timestampFormat";
+import type { SidebarThreadSummary } from "../types";
 import { buildThreadActionItems, ITEM_ICON_CLASS } from "./CommandPalette.logic";
 import { useEnvironmentLookups, useProjectLookups } from "./CommandPaletteLookups";
 import { ThreadCommandSubtitle } from "./ThreadCommandSubtitle";
@@ -63,6 +65,8 @@ function useProviderEntryByEnvironmentAndInstanceId() {
   );
 }
 
+export const CommandPaletteThreadQueryContext = createContext("");
+
 function useConnectedThreadSearch(query: string) {
   const { environments } = useEnvironments();
   const { projectEnvironmentLocationById } = useEnvironmentLookups();
@@ -86,29 +90,25 @@ function useConnectedThreadSearch(query: string) {
   );
 }
 
+type PaletteActiveThread = { readonly environmentId: EnvironmentId; readonly id: ThreadId };
+
 /**
- * Every visible thread as a palette item, plus, for a non-empty
- * `threadSearchQuery`, the threads whose messages match, best first.
+ * Every visible thread as a palette item. Its own hook, so the rows are cached on the
+ * threads alone and keep their identity while the query changes.
  */
-export function useCommandPaletteThreadItems(input: {
-  readonly activeThread: { readonly environmentId: EnvironmentId; readonly id: ThreadId } | null;
-  readonly threadSearchQuery: string;
+function useThreadActionItems(input: {
+  readonly activeThread: PaletteActiveThread | null;
+  readonly runThread: (thread: SidebarThreadSummary) => Promise<void>;
 }) {
-  const { activeThread, threadSearchQuery } = input;
+  const { activeThread, runThread } = input;
   const messages = useMessages();
   const gt = useGT();
-  const navigate = useNavigate();
   const threads = useVisibleThreadShells();
+  const { environments } = useEnvironments();
   const { projectEnvironmentLocationById } = useEnvironmentLookups();
   const providerEntryByEnvironmentAndInstanceId = useProviderEntryByEnvironmentAndInstanceId();
-  const messageSearch = useConnectedThreadSearch(threadSearchQuery);
   const { projectByKey } = useProjectLookups();
-  const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
-  // Ranking is relative to when the palette opened, so rows do not reorder as time passes.
-  const [now] = useState(() => Date.now());
-
-  const { environments } = useEnvironments();
-  const threadItems = buildThreadActionItems(
+  return buildThreadActionItems(
     {
       threads,
       ...(environments.length > 1
@@ -149,38 +149,60 @@ export function useCommandPaletteThreadItems(input: {
           />
         );
       },
-      runThread: async (thread) => {
-        // A pick sends its open with the query, always, so the server records
-        // it; the thread view then skips its own open. The open thread is no pick.
-        const isOpen =
-          activeThread?.environmentId === thread.environmentId && activeThread.id === thread.id;
-        if (threadSearchQuery.trim().length > 0 && !threadSearchQuery.startsWith(">") && !isOpen) {
-          claimThreadOpen(thread.environmentId, thread.id, Date.now());
-        }
-        if (
-          threadSearchQuery.trim().length > 0 &&
-          !threadSearchQuery.startsWith(">") &&
-          thread.lastVisitedAt !== undefined &&
-          !isOpen
-        ) {
-          void visitThread({
-            environmentId: thread.environmentId,
-            input: {
-              threadId: thread.id,
-              visitedAt: thread.updatedAt,
-              opened: true,
-              searchQuery: pickedQuery(threadSearchQuery),
-            },
-          });
-        }
-        await navigate({
-          to: "/$environmentId/$threadId",
-          params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
-        });
-      },
+      runThread,
     },
     messages,
   );
+}
+
+/**
+ * Every visible thread as a palette item, plus, for a non-empty
+ * `threadSearchQuery`, the threads whose messages match, best first.
+ */
+export function useCommandPaletteThreadItems(input: {
+  readonly activeThread: PaletteActiveThread | null;
+  readonly threadSearchQuery: string;
+}) {
+  const { activeThread, threadSearchQuery } = input;
+  const messages = useMessages();
+  const navigate = useNavigate();
+  const messageSearch = useConnectedThreadSearch(threadSearchQuery);
+  const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
+  // Ranking is relative to when the palette opened, so rows do not reorder as time passes.
+  const [now] = useState(() => Date.now());
+  // Rows already shown keep their places when a slower environment answers.
+  const [shownOrder, setShownOrder] = useState<ShownOrder | null>(null);
+  // Reads the query when picked, so the rows need not be rebuilt on every keystroke.
+  const runThread = useStableCallback(async (thread: SidebarThreadSummary) => {
+    // A pick sends its open with the query, always, so the server records
+    // it; the thread view then skips its own open. The open thread is no pick.
+    const isOpen =
+      activeThread?.environmentId === thread.environmentId && activeThread.id === thread.id;
+    if (threadSearchQuery.trim().length > 0 && !threadSearchQuery.startsWith(">") && !isOpen) {
+      claimThreadOpen(thread.environmentId, thread.id, Date.now());
+    }
+    if (
+      threadSearchQuery.trim().length > 0 &&
+      !threadSearchQuery.startsWith(">") &&
+      thread.lastVisitedAt !== undefined &&
+      !isOpen
+    ) {
+      void visitThread({
+        environmentId: thread.environmentId,
+        input: {
+          threadId: thread.id,
+          visitedAt: thread.updatedAt,
+          opened: true,
+          searchQuery: pickedQuery(threadSearchQuery),
+        },
+      });
+    }
+    await navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
+    });
+  });
+  const threadItems = useThreadActionItems({ activeThread, runThread });
 
   const itemByValue = new Map(threadItems.map((item) => [item.value, item]));
   const itemForMatch = (match: EnvironmentThreadSearchMatch) =>
@@ -220,8 +242,6 @@ export function useCommandPaletteThreadItems(input: {
     ];
   });
 
-  // Rows already shown keep their places when a slower environment answers.
-  const [shownOrder, setShownOrder] = useState<ShownOrder | null>(null);
   const order = nextShownOrder(
     shownOrder,
     messageSearch.query,

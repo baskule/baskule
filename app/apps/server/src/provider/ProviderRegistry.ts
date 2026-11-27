@@ -5,6 +5,7 @@ import {
   isProviderWorkspaceSnapshotPending,
   ProviderDriverKind,
   type ProviderInstanceId,
+  type ProviderRuntimeModeLimit,
   type ServerProvider,
   type ServerProviderUpdateState,
 } from "@t3tools/contracts";
@@ -82,6 +83,15 @@ export class ProviderRegistry extends Context.Service<
       readonly scanCwd?: string;
       readonly fresh?: boolean;
     }) => Effect.Effect<ReadonlyArray<ServerProvider>>;
+
+    /**
+     * Modes the instance offers that cannot run in `scanCwd`. Empty for an unknown instance and
+     * for a provider that reports none.
+     */
+    readonly runtimeModeLimits: (input: {
+      readonly instanceId: ProviderInstanceId;
+      readonly scanCwd: string;
+    }) => Effect.Effect<ReadonlyArray<ProviderRuntimeModeLimit>>;
 
     /**
      * Drop T3-owned model caches before an explicit model refresh. Pass the
@@ -220,14 +230,30 @@ const mergeProviderModels = (
   }
 
   const previousBySlug = new Map(previousModels.map((model) => [model.slug, model] as const));
+  const preserveDefault =
+    nextModels.length > 0 && !nextModels.some((model) => model.isDefault === true);
   const mergedModels = nextModels.map((model) => {
     const previousModel = previousBySlug.get(model.slug);
-    if (!previousModel || hasModelCapabilities(model) || !hasModelCapabilities(previousModel)) {
+    if (!previousModel) {
       return model;
     }
+    const retainCapabilities = !hasModelCapabilities(model) && hasModelCapabilities(previousModel);
+    const retainDefault = preserveDefault && previousModel.isDefault === true;
+    if (!retainCapabilities && !retainDefault) {
+      return model;
+    }
+    const aliases = retainDefault
+      ? [...new Set([...(model.aliases ?? []), ...(previousModel.aliases ?? [])])]
+      : undefined;
     return {
       ...model,
-      capabilities: previousModel.capabilities,
+      ...(retainCapabilities ? { capabilities: previousModel.capabilities } : {}),
+      ...(retainDefault
+        ? {
+            isDefault: true,
+            ...(aliases && aliases.length > 0 ? { aliases } : {}),
+          }
+        : {}),
     };
   });
   const nextSlugs = new Set(nextModels.map((model) => model.slug));
@@ -1231,6 +1257,16 @@ export const layer = Layer.effect(
       ),
     ).pipe(Effect.forkIn(serviceScope));
 
+    const runtimeModeLimits = Effect.fn("ProviderRegistry.runtimeModeLimits")(function* (input: {
+      readonly instanceId: ProviderInstanceId;
+      readonly scanCwd: string;
+    }) {
+      const instance = yield* instanceRegistry.getInstance(input.instanceId);
+      return instance?.runtimeModeLimitsForCwd === undefined
+        ? []
+        : yield* instance.runtimeModeLimitsForCwd(input.scanCwd);
+    });
+
     const invalidateModelCaches = Effect.fn("ProviderRegistry.invalidateModelCaches")(function* (
       input: Parameters<ProviderRegistry["Service"]["invalidateModelCaches"]>[0],
     ) {
@@ -1282,6 +1318,7 @@ export const layer = Layer.effect(
         Effect.catchCause(recoverRefreshFailure),
       ),
       refreshAfterUpdate,
+      runtimeModeLimits,
       invalidateModelCaches,
       refreshModelCatalog: refreshModelCatalog().pipe(
         Effect.catchCause(recoverRefreshFailure),

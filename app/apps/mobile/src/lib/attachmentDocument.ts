@@ -39,8 +39,8 @@ class AttachmentTextReadError extends Schema.TaggedError<AttachmentTextReadError
 ) {}
 
 // Plain-object keys compare structurally (Effect `Equal`/`Hash`). Unmounting the
-// last reader interrupts the read.
-const attachmentTextAtom = Atom.family((key: AttachmentTextKey) =>
+// last reader interrupts the read, which aborts the fetch.
+export const attachmentTextAtom = Atom.family((key: AttachmentTextKey) =>
   Atom.make(
     Effect.tryPromise({
       try: (signal) => readAttachmentText(key, signal),
@@ -53,7 +53,7 @@ const attachmentTextAtom = Atom.family((key: AttachmentTextKey) =>
   ).pipe(Atom.withLabel("attachment-text")),
 );
 
-const noAttachmentText = Atom.make(
+export const noAttachmentText = Atom.make(
   AsyncResult.initial<{ text: string; truncated: boolean }, AttachmentTextReadError>(),
 ).pipe(Atom.withLabel("attachment-text:none"));
 

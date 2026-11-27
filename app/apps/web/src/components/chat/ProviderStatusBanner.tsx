@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { type ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
@@ -9,7 +10,6 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button, InlineButton } from "../ui/button";
 import { m, type MessageResolver } from "../../i18n/messages";
 import { formatProviderDriverKindLabel } from "../../providerModels";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { RefreshIcon } from "../ui/refresh-icon";
@@ -189,12 +189,13 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
         <AlertTitle>{title}</AlertTitle>
         <AlertDescription>
           <div className="flex flex-col gap-2">
-            <Tooltip>
-              <TooltipTrigger render={<div className="line-clamp-3" />}>{message}</TooltipTrigger>
-              <TooltipPopup side="top" className="whitespace-pre-wrap">
-                {message}
-              </TooltipPopup>
-            </Tooltip>
+            <SharedTooltipTrigger
+              render={<div className="line-clamp-3" />}
+              label={message}
+              className="whitespace-pre-wrap"
+            >
+              {message}
+            </SharedTooltipTrigger>
             <div className="flex flex-wrap items-center justify-end gap-3">
               {onOpenProviderSetup && hasProviderSetup(status) ? (
                 <InlineButton onClick={() => onOpenProviderSetup(status.instanceId)}>
