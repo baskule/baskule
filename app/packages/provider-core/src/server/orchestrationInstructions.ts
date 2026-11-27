@@ -1,9 +1,12 @@
+// baskule: a hosted agent's computer cannot read secret files written by its SpaceCell.
+const SUDO_FILE_GUIDANCE = `Sudo: if \`sudo -n <cmd>\` needs a password, use \`delivery: "file"\` and run \`sudo -S -p '' <cmd> < "$file"\`; the password takes stdin, so give other input as a file argument.`;
+
 /**
  * Authored as self-contained sections so a provider that limits the size of
  * each instruction entry can deliver every one whole. Keep each section under
  * 4,000 bytes.
  */
-export const T3_CODE_ORCHESTRATION_SECTIONS: ReadonlyArray<string> = [
+const orchestrationSections = (supportsSecretFiles: boolean): ReadonlyArray<string> => [
   `## T3 Code orchestration
 
 Ordinary coding tasks need no T3 tools.
@@ -18,7 +21,7 @@ Ordinary coding tasks need no T3 tools.
 - Another machine: \`t3_environment_links\` lists linked ones. Pass its \`environmentId\` and that machine's \`threadId\` to T3 tools.
 - Unlinked ("delegate this to my vps"): \`t3_environment_link\` with a \`hint\` from the user's words, never a pairing code in chat. No link tools: say to enable Settings → Labs → Linked environments.
 - In your reply, mention a thread by its \`link\`, verbatim, never a plain title or bare id.
-- A login, token, PIN, pairing code or sudo password only the user can give: call \`request_secret\`, not a chat ask or a handoff. Not for access you have. Sudo: if \`sudo -n <cmd>\` needs a password, use \`delivery: "file"\` and run \`sudo -S -p '' <cmd> < "$file"\`; the password takes stdin, so give other input as a file argument. Asked only to schedule: \`schedule_task\` without running its prompt.
+- A login, token, PIN${supportsSecretFiles ? ", pairing code or sudo password" : " or pairing code"} only the user can give: call \`request_secret\`, not a chat ask or a handoff. Not for access you have. ${supportsSecretFiles ? `${SUDO_FILE_GUIDANCE} ` : ""}Asked only to schedule: \`schedule_task\` without running its prompt.
 - T3 tools may load late. Try the name once before you call it absent.`,
   `### Visuals and preview
 
@@ -26,10 +29,16 @@ Ordinary coding tasks need no T3 tools.
 - Never use \`preview_*\` unasked to verify or show your own edit. Use them when the current request asks for browser work, including recording edits, or names a page or tab. Don't repeat preview calls from an earlier turn. Public pages: web fetch or search unless browser work was asked; then preview tools only, no web fetch. Close a tab you opened before you reply, unless the user asked for it or uses it.`,
 ];
 
-export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = `
+const joinOrchestrationSections = (sections: ReadonlyArray<string>) => `
 
-${T3_CODE_ORCHESTRATION_SECTIONS.join("\n\n")}
+${sections.join("\n\n")}
 `;
+
+export const T3_CODE_ORCHESTRATION_SECTIONS = orchestrationSections(true);
+export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = joinOrchestrationSections(
+  T3_CODE_ORCHESTRATION_SECTIONS,
+);
+const BASKULE_ORCHESTRATION_INSTRUCTIONS = joinOrchestrationSections(orchestrationSections(false));
 
 const deviceToolInstructions = (loadTools: string) => `## T3 Code devices
 
@@ -63,8 +72,13 @@ export function t3OrchestrationPromptForFirstRun(input: {
 export function t3OrchestrationSystemPrompt(
   hasT3Mcp: boolean,
   hasDeviceTools: boolean,
+  options?: { readonly supportsSecretFiles: boolean },
 ): string | undefined {
+  const instructions =
+    options?.supportsSecretFiles === false
+      ? BASKULE_ORCHESTRATION_INSTRUCTIONS
+      : T3_CODE_ORCHESTRATION_INSTRUCTIONS;
   return hasT3Mcp
-    ? `${T3_CODE_ORCHESTRATION_INSTRUCTIONS}${hasDeviceTools ? "\n" + T3_CODE_DEVICE_TOOL_INSTRUCTIONS : ""}`
+    ? `${instructions}${hasDeviceTools ? "\n" + T3_CODE_DEVICE_TOOL_INSTRUCTIONS : ""}`
     : undefined;
 }
